@@ -41,7 +41,7 @@ const Tables = () => {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex bg-gray-100 rounded-lg p-1">
-              {["all", "booked", "available"].map((filter) => (
+              {["all", "Ocupado", "Disponible"].map((filter) => (
                 <button
                   key={filter}
                   onClick={() => setStatusFilter(filter)}
@@ -52,7 +52,7 @@ const Tables = () => {
                   }`}
                 >
                   {filter === "all" ? "Todas" : 
-                   filter === "booked" ? "Ocupadas" : "Disponibles"}
+                   filter === "Ocupado" ? "Ocupadas" : "Disponibles"}
                 </button>
               ))}
             </div>
@@ -94,7 +94,7 @@ const Tables = () => {
             <p className="text-xl text-gray-500 mb-2">
               {statusFilter === "all" 
                 ? "No hay mesas registradas" 
-                : statusFilter === "booked" 
+                : statusFilter === "Ocupado" 
                   ? "No hay mesas ocupadas" 
                   : "No hay mesas disponibles"}
             </p>

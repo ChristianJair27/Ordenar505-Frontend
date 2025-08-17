@@ -139,7 +139,7 @@ const OrderDetail = () => {
                 <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="py-3 px-4">{item.item_name}</td>
                   <td className="py-3 px-4 text-center">x{item.quantity}</td>
-                  <td className="py-3 px-4 text-right">${(item.quantity * item.price).toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right">${(item.price)}</td>
                 </tr>
               ))}
             </tbody>

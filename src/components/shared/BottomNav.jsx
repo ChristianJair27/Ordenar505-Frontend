@@ -85,8 +85,8 @@ const BottomNav = () => {
   const navItems = [
     { path: "/", icon: <FaHome />, label: "Inicio" },
     { path: "/orders", icon: <MdOutlineReceiptLong />, label: "Órdenes" },
-    { path: "/tables", icon: <MdTableRestaurant />, label: "Mesas" },
-    { path: "/more", icon: <IoMdMore />, label: "Más" }, // Considera cambiar "/more" por algo más específico si sabes lo que irá ahí
+    //{ path: "/tables", icon: <MdTableRestaurant />, label: "Mesas" },
+    //{ path: "/more", icon: <IoMdMore />, label: "Más" }, // Considera cambiar "/more" por algo más específico si sabes lo que irá ahí
   ];
 
   return (
@@ -116,7 +116,7 @@ const BottomNav = () => {
         {/* Usamos absolute positioning para que flote encima de la barra */}
         <button
           disabled={isActive("/tables") || isActive("/menu")} // Deshabilitar si ya estamos en selección de mesa o menú
-          onClick={openModal}
+         onClick={() => navigate("/tables")}
           className={`absolute -top-7 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full flex items-center justify-center 
                       bg-gradient-to-br from-green-500 to-green-700 text-white text-3xl shadow-xl 
                       hover:scale-110 hover:shadow-2xl active:scale-95 transition-all duration-300 ease-in-out

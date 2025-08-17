@@ -50,7 +50,7 @@ const RecentOrders = () => {
               <OrderList key={order.id} order={order} />
             ))
           ) : (
-            <p className="col-span-3 text-gray-500">No orders available</p>
+            <p className="col-span-3 text-gray-500">No orders Disponible</p>
           )}
         </div>
       </div>

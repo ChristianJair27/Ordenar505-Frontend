@@ -11,6 +11,7 @@ import AddUserModal from "./AddUserModal";
 import { enqueueSnackbar } from "notistack";
 import { getCashMovements, updateOrderStatus } from "../../https/index";
 import { formatDateAndTime } from "../../utils";
+import AddTableModal from "./AddTableModal";
 
 import {
   keepPreviousData,
@@ -41,7 +42,9 @@ const Metrics = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 const [isDishModalOpen, setIsDishModalOpen] = useState(false);
 
-
+const [tables, setTables] = useState([]);
+const [isTableModalOpen, setIsTableModalOpen] = useState(false);
+const [editTable, setEditTable] = useState(null);
 
 const [cashMovements, setCashMovements] = useState([]);
   const user = useSelector((state) => state.user.user);
@@ -211,11 +214,24 @@ const [users, setUsers] = useState([]);
 
 
 
+const fetchTables = async () => {
+    const res = await axios.get(`${API_URL}/api/table`);
+    setTables(res.data.data);
+  };
 
 
+const handleEditTable = (table) => setEditTable(table);
 
-
-
+const handleDeleteTable = async (id) => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar esta mesa?")) return;
+    
+    try {
+      await axiosWrapper.delete(`/api/table/${id}`);
+      fetchUsers();
+    } catch (err) {
+      console.error("Error al eliminar mesa:", err);
+    }
+  };
 
 
 
@@ -320,7 +336,7 @@ const orders = resData?.data?.data || [];
     const fetchData = async () => {
       setLoading(true);
       try {
-        await Promise.all([fetchCashbox(), fetchCategories(), fetchDishes()]);
+        await Promise.all([fetchCashbox(), fetchCategories(), fetchDishes(), fetchTables()]);
       } catch (error) {
         console.error("Error fetching data:", error);
       } finally {
@@ -396,6 +412,16 @@ const loadData = async () => {
             onClick={() => setActiveTab("users")}
           >
             Gestión de Usuarios
+          </button>
+          <button
+            className={`py-3 px-6 font-medium text-sm rounded-t-lg ${
+              activeTab === "tables" 
+                ? "bg-white text-blue-600 border-t border-l border-r border-gray-200" 
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            onClick={() => setActiveTab("tables")}
+          >
+            Gestión de Mesas
           </button>
 
 
@@ -847,6 +873,82 @@ const loadData = async () => {
 
 
 
+{/* Tables Management Section */}
+        {activeTab === "tables" && (
+          <div className="space-y-8">
+            
+            
+            {/* Tables Section */}
+            <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-200 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800">Mesas</h2>
+                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg flex items-center" onClick={() => setIsTableModalOpen(true)}>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Nueva Mesa <BiSolidDish />
+                </button>
+              </div>
+              
+              <div className="p-6">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Mesa
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Estatus
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Asientos
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Acciones
+                        </th>
+                        
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {tables.map((table) => (
+                        <tr key={table.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                           
+                              
+                                <div className="text-sm font-medium text-gray-900">{table.table_no}</div>
+                              
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">${table.status}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{table.seats}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap ">
+                            <button
+                              onClick={() => handleEditTable(table)}
+                              className="text-blue-600 hover:text-blue-900 mr-3"
+                            >
+                              Editar
+                            </button>
+                            <button 
+                            onClick={() => handleDeleteTable(table.id)}
+                            className="text-red-600 hover:text-red-900">
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
 
 
 
@@ -874,25 +976,44 @@ const loadData = async () => {
       )}
 
 
-{isCategoryModalOpen && (
-  <AddCategoryModal
-    setIsOpen={setIsCategoryModalOpen}
-    onClose={() => {
-      setIsCategoryModalOpen(false);
-      fetchCategories(); // Refresca categorías después
+        {isCategoryModalOpen && (
+          <AddCategoryModal
+            setIsOpen={setIsCategoryModalOpen}
+            onClose={() => {
+              setIsCategoryModalOpen(false);
+              fetchCategories(); // Refresca categorías después
+            }}
+          />
+        )}
+
+        {isDishModalOpen && (
+          <AddDishModal
+            setIsOpen={setIsDishModalOpen}
+            onClose={() => {
+              setIsDishModalOpen(false);
+              fetchDishes(); // Refresca platillos después
+            }}
+          />
+        )}
+
+
+        {isTableModalOpen && (
+  <AddTableModal
+    setIsOpen={setIsTableModalOpen}
+    onTableAdded={() => {
+      setIsTableModalOpen(false);
+      fetchTables(); // refresca la lista
     }}
   />
 )}
 
-{isDishModalOpen && (
-  <AddDishModal
-    setIsOpen={setIsDishModalOpen}
-    onClose={() => {
-      setIsDishModalOpen(false);
-      fetchDishes(); // Refresca platillos después
-    }}
-  />
-)}
+{editTable && (
+        <AddTableModal
+          setIsOpen={() => setEditTable(null)}
+          initialData={editTable}
+          isEditing
+        />
+      )}
 
 
 
@@ -991,13 +1112,13 @@ const loadData = async () => {
         </div>
       )}
 
-{showCorteModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-lg p-6 shadow-xl w-full max-w-md text-black">
-      <CorteTicket corte={corteInfo} onClose={() => setShowCorteModal(false)} />
-    </div>
-  </div>
-)}
+    {showCorteModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg p-6 shadow-xl w-full max-w-md text-black">
+          <CorteTicket corte={corteInfo} onClose={() => setShowCorteModal(false)} />
+        </div>
+      </div>
+    )}
 
     </div>
   );

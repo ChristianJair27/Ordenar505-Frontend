@@ -1,39 +1,56 @@
-import React, { useEffect, useState } from "react"; // Importar useState
+import React, { useEffect, useState } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
-import { MdRestaurantMenu, MdTableRestaurant, MdShoppingCart } from "react-icons/md"; // Nuevo icono para el carrito
+import { MdRestaurantMenu, MdTableRestaurant, MdShoppingCart } from "react-icons/md";
 import { FiUser } from "react-icons/fi";
 import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
 import CartInfo from "../components/menu/CartInfo";
 import Bill from "../components/menu/Bill";
 import { useSelector } from "react-redux";
-import { AnimatePresence, motion } from "framer-motion"; // Para animaciones del drawer
+import { AnimatePresence, motion } from "framer-motion";
 
 const Menu = () => {
   useEffect(() => {
-    document.title = "La Peña De Santiago | Menú"; // Revertí a Patita para consistencia
+    document.title = "La Peña De Santiago | Menú";
   }, []);
 
+  // 👇 tomamos user y customer del store
+  
+  const user = useSelector((state) => state.user);
   const customerData = useSelector((state) => state.customer);
-  const cartItems = useSelector((state) => state.cart.items); // Asumiendo que guardas los items del carrito aquí
+  const cartItems = useSelector((state) => state.cart.items) || [];
 
-  // Estado para controlar la visibilidad del carrito en móvil
+  // 👇 nombre que mostraremos: prioriza usuario logueado
+  const creatorName =
+    user?.name ?? user?.full_name ?? user?.username ?? "Usuario";
+
+  // 👇 número/identificador de mesa con compatibilidad
+  const tableShown =
+    customerData?.table?.tableNo ??
+    customerData?.table?.tableNumber ??
+    customerData?.table?.tableId ??
+    "N/A";
+
+  // Estado para drawer del carrito (móvil)
   const [isCartOpen, setIsCartOpen] = useState(false);
 
-  // Calcula el número total de ítems en el carrito
-  const totalCartItems = (cartItems || []).reduce((sum, item) => sum + item.quantity, 0);
+  // Total de items en el carrito
+  const totalCartItems = cartItems.reduce(
+    (sum, item) => sum + (Number(item.quantity) || 0),
+    0
+  );
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-white shadow-sm z-20"> {/* Aumentado z-index */}
+      <div className="flex items-center justify-between px-6 py-4 bg-white shadow-sm z-20">
         <div className="flex items-center gap-4">
           <BackButton />
           <h1 className="text-2xl font-bold text-gray-800">Menú del Restaurante</h1>
         </div>
 
-        {/* Info de Cliente/Mesa (Visible en todas las pantallas) */}
+        {/* Info de Usuario/Mesa */}
         <div className="flex items-center gap-4 bg-blue-50 rounded-lg px-4 py-2 border border-blue-100">
           <div className="p-2 bg-blue-100 rounded-full text-blue-600">
             <MdRestaurantMenu className="text-xl" />
@@ -42,19 +59,19 @@ const Menu = () => {
             <div className="flex items-center gap-2">
               <FiUser className="text-gray-500" />
               <span className="font-medium text-gray-800">
-                {customerData.customerName || "Cliente no asignado"}
+                {creatorName}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <MdTableRestaurant className="text-gray-500" />
               <span className="text-sm text-gray-600">
-                Mesa: {customerData.table?.tableNo || "N/A"}
+                Mesa: {tableShown}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Botón de Carrito para Móviles (Solo visible en pantallas pequeñas) */}
+        {/* Botón Carrito (móvil) */}
         <button
           onClick={() => setIsCartOpen(true)}
           className="md:hidden relative p-3 bg-green-500 text-white rounded-full shadow-lg hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-400"
@@ -70,14 +87,13 @@ const Menu = () => {
       </div>
 
       {/* Contenido principal */}
-      <main className="flex flex-1 overflow-hidden"> {/* Eliminamos flex-col/md:flex-row aquí para el diseño */}
-        {/* Sección izquierda - Menú (Visible siempre) */}
+      <main className="flex flex-1 overflow-hidden">
+        {/* Menú */}
         <div className="flex-1 overflow-y-auto p-6">
           <MenuContainer />
         </div>
 
-        {/* Sección derecha - Resumen (Carrrito/Factura) - Solo visible en MD y pantallas más grandes */}
-        {/* Este div ya no es el que se apila en móvil, se oculta completamente */}
+        {/* Resumen (solo md+) */}
         <div className="hidden md:flex md:w-96 border-l border-gray-200 bg-white flex-col flex-shrink-0 pb-16">
           <div className="p-4 border-b border-gray-200">
             <CustomerInfo />
@@ -85,13 +101,13 @@ const Menu = () => {
           <div className="flex-1 overflow-y-auto p-4">
             <CartInfo />
           </div>
-          <div className="bg-white border-t border-gray-200 p-4 shadow-lg flex-shrink-0 mb-16" >
+          <div className="bg-white border-t border-gray-200 p-4 shadow-lg flex-shrink-0 mb-16">
             <Bill />
           </div>
         </div>
       </main>
 
-      {/* Carrito como Drawer/Panel Lateral para Móviles */}
+      {/* Drawer Carrito (móvil) */}
       <AnimatePresence>
         {isCartOpen && (
           <motion.div
@@ -99,9 +115,8 @@ const Menu = () => {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.3 }}
-            className="fixed inset-y-0 right-0 w-full xs:w-80 sm:w-96 bg-white shadow-xl flex flex-col z-50 md:hidden" // z-index alto para estar encima de todo
+            className="fixed inset-y-0 right-0 w-full xs:w-80 sm:w-96 bg-white shadow-xl flex flex-col z-50 md:hidden"
           >
-            {/* Encabezado del Drawer */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-800 flex items-center">
                 <MdShoppingCart className="mr-2 text-green-600" /> Tu Carrito
@@ -114,13 +129,10 @@ const Menu = () => {
               </button>
             </div>
 
-            {/* Contenido del Carrito en el Drawer */}
             <div className="flex-1 overflow-y-auto p-4">
               <CartInfo />
-              
             </div>
 
-            {/* Total y Botón de Orden en el Drawer */}
             <div className="bg-white border-t border-gray-200 p-4 shadow-lg flex-shrink-0">
               <Bill />
             </div>
@@ -128,7 +140,7 @@ const Menu = () => {
         )}
       </AnimatePresence>
 
-      {/* Overlay (oscurece el fondo cuando el carrito está abierto en móvil) */}
+      {/* Overlay */}
       <AnimatePresence>
         {isCartOpen && (
           <motion.div
@@ -137,12 +149,11 @@ const Menu = () => {
             exit={{ opacity: 0 }}
             transition={{ type: "tween", duration: 0.3 }}
             onClick={() => setIsCartOpen(false)}
-            className="fixed inset-0 bg-black z-40 md:hidden" // z-index justo debajo del drawer
+            className="fixed inset-0 bg-black z-40 md:hidden"
           />
         )}
       </AnimatePresence>
 
-      {/* Barra de navegación inferior */}
       <BottomNav />
     </div>
   );

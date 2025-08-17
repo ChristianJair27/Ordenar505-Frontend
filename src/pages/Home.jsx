@@ -1,9 +1,9 @@
 import React, { useEffect } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import { motion } from "framer-motion";
-import { FiClock, FiDollarSign, FiUser, FiCheckSquare, FiGrid, FiBarChart2 } from "react-icons/fi";
-import { GiMeal, GiCookingPot } from "react-icons/gi";
-import { FaPlusCircle, FaArrowRight, FaSignInAlt, FaSignOutAlt } from "react-icons/fa";
+import { FiDollarSign, FiUser, FiCheckSquare } from "react-icons/fi";
+import { GiCookingPot } from "react-icons/gi";
+import { FaArrowRight, FaSignInAlt, FaSignOutAlt } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -13,26 +13,17 @@ import { getTables } from "../https";
 
 const TIPS_PCT = 0.03;
 
-// --- Framer Motion Variants ---
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 }
-  }
-};
+// Animations
+const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } } };
+const buttonVariants = { hover: { scale: 1.03, boxShadow: "0px 10px 20px rgba(0,0,0,.1)" }, tap: { scale: 0.98 } };
+const itemVariants = { hidden: { y: 30, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: "spring", stiffness: 120, damping: 12 } } };
 
-const buttonVariants = {
-  hover: { scale: 1.03, boxShadow: "0px 10px 20px rgba(0, 0, 0, 0.1)" },
-  tap: { scale: 0.98 }
-};
-
-const itemVariants = {
-  hidden: { y: 30, opacity: 0 },
-  visible: {
-    y: 0, opacity: 1,
-    transition: { type: "spring", stiffness: 120, damping: 12 }
-  }
+const normalizeStatus = (raw) => {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (new Set(["ocupado","ocupada","occupied","busy","en uso","en-uso","booked"]).has(s)) return "ocupado";
+  if (new Set(["libre","disponible","free","available","vacant"]).has(s)) return "libre";
+  if (new Set(["reservado","reservada","reserved","apartado"]).has(s)) return "reservado";
+  return "otro";
 };
 
 const Home = () => {
@@ -40,10 +31,10 @@ const Home = () => {
   const API_URL = import.meta.env.VITE_BACKEND_URL;
   const userData = useSelector((state) => state.user);
 
-  // ✅ Normaliza rol
-  const role = String(userData?.role || "").toLowerCase();
-  const isWaiter  = ["mesero", "waiter"].includes(role);
-  const isCashier = ["cajero", "cashier"].includes(role);
+  // ✅ Normaliza rol y da poder total al admin
+  const role = String(userData?.role || userData?.user?.role || "").toLowerCase();
+  const isWaiter  = ["mesero", "waiter"].includes(role) || role === "admin"; // ✅ admin ve vista mesero
+  const isCashier = ["cajero", "cashier"].includes(role) || role === "admin"; // ✅ admin ve vista cajero
   const isAdmin   = role === "admin";
 
   // Mesas
@@ -64,30 +55,25 @@ const Home = () => {
     refetchInterval: 30000,
   });
 
-  // 🔽 Stats del mesero
+  // 🔽 Stats del mesero (admin también)
   const {
     data: waiterStats,
     isLoading: waiterStatsLoading,
   } = useQuery({
     queryKey: ["waiterTodayStats", userData?.id],
     queryFn: async () => {
-      const res = await axiosWrapper.get(
-        `${API_URL}/api/waiter/today-stats?waiter_id=${userData.id}`
-      );
+      const res = await axiosWrapper.get(`${API_URL}/api/waiter/today-stats?waiter_id=${userData.id}`);
       return res?.data?.data ?? { orders_count: 0, revenue: 0 };
     },
-    enabled: isWaiter && !!userData?.id,
+    enabled: (isWaiter || isAdmin) && !!userData?.id, // ✅
     refetchInterval: 30000,
   });
 
-  useEffect(() => {
-    document.title = "La Peña De Santiago | Panel";
-  }, []);
+  useEffect(() => { document.title = "La Peña De Santiago | Panel"; }, []);
 
-  const formatValue = (value) =>
-    typeof value === "number" ? `$${value.toFixed(2)}` : value;
+  const formatValue = (value) => (typeof value === "number" ? `$${value.toFixed(2)}` : value);
 
-  // Turno (solo cajero) — lee res.data.data y normaliza
+  // Turno (cajero + admin) — lee res.data.data y normaliza
   const {
     data: turnoData = { turno_abierto: false, total_ventas: 0, total_ordenes: 0, hora_inicio: null },
     refetch,
@@ -100,7 +86,6 @@ const Home = () => {
     queryFn: async () => {
       const res = await axiosWrapper.get(`${API_URL}/api/turno-actual`);
       const d = res?.data?.data ?? {};
-
       return {
         turno_abierto: !!d.turno_abierto,
         total_ventas: Number(d.total_ventas ?? 0) || 0,
@@ -108,15 +93,10 @@ const Home = () => {
         hora_inicio: d.hora_inicio ?? null,
       };
     },
-    enabled: isCashier,
+    enabled: isCashier || isAdmin, // ✅
     retry: 1,
     refetchInterval: 60000
   });
-
-
-
-
-
 
   const iniciarTurnoMutation = useMutation({
     mutationFn: () => axiosWrapper.post(`${API_URL}/api/start`, {}, { withCredentials: true }),
@@ -130,14 +110,13 @@ const Home = () => {
     onError: (err) => enqueueSnackbar(`Error al cerrar turno: ${err.response?.data?.message || err.message}`, { variant: "error" })
   });
 
-  // Métricas
+  // Métricas (cajero/admin ven caja; mesero/admin ven personales)
   const getMetrics = () => {
-    if (isCashier) {
+    if (isCashier || isAdmin) {
       const isShiftOpen = turnoData?.turno_abierto;
       const totalVentas  = turnoData?.total_ventas || 0;
       const totalOrdenes = turnoData?.total_ordenes || 0;
       const horaInicio   = turnoData?.hora_inicio ? new Date(turnoData.hora_inicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "N/A";
-
       return [
         {
           title: "Estado del Turno",
@@ -171,15 +150,11 @@ const Home = () => {
     } else {
       const revenue = isWaiter ? (waiterStats?.revenue ?? 0) : 0;
       const ordersCount = isWaiter ? (waiterStats?.orders_count ?? 0) : 0;
-
-      const kitchenTipsValue = isWaiter
-        ? (waiterStatsLoading ? "..." : formatValue((Number(revenue) || 0) * TIPS_PCT))
-        : formatValue(0);
-
+      const kitchenTipsValue = isWaiter ? (waiterStatsLoading ? "..." : formatValue((Number(revenue) || 0) * TIPS_PCT)) : formatValue(0);
       return [
         {
-          title: isWaiter ? "Órdenes Hoy (yo)" : "Órdenes Activas",
-          value: isWaiter ? (waiterStatsLoading ? "..." : ordersCount) : 8,
+          title: "Órdenes Hoy (yo)",
+          value: isWaiter ? (waiterStatsLoading ? "..." : ordersCount) : 0,
           icon: <FiCheckSquare className="text-purple-600" />,
           color: "bg-purple-50",
           textColor: "text-purple-800",
@@ -187,7 +162,7 @@ const Home = () => {
           isHighlight: false
         },
         {
-          title: isWaiter ? "Ganancias Hoy (yo)" : "Ganancias Hoy",
+          title: "Ganancias Hoy (yo)",
           value: isWaiter ? (waiterStatsLoading ? "..." : formatValue(revenue)) : formatValue(0),
           icon: <FiDollarSign className="text-green-600" />,
           color: "bg-green-50",
@@ -210,11 +185,8 @@ const Home = () => {
 
   const metrics = getMetrics();
 
-  const isBooked = (t) => {
-    const status = String(t?.status ?? "").trim().toLowerCase();
-    return status === "booked" || status === "ocupada" || status === "occupied";
-  };
-  const bookedTables = Array.isArray(tablesData) ? tablesData.filter(isBooked) : [];
+  const isOcupado = (t) => normalizeStatus(t?.status ?? t?.state ?? (t?.booked ? "booked" : "")) === "ocupado";
+  const OcupadoTables = Array.isArray(tablesData) ? tablesData.filter(isOcupado) : [];
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
@@ -224,11 +196,12 @@ const Home = () => {
           <p className="text-gray-600 text-lg">Panel de control rápido para tu jornada.</p>
         </motion.div>
 
-        {(turnoError || (!turnoData?.turno_abierto && isCashier && !isLoading && !isFetching)) && (
+        {/* ✅ Alerta turno (aplica para cajero o admin). OJO paréntesis */}
+        {(turnoError || ((!turnoData?.turno_abierto) && (isCashier || isAdmin) && !isLoading && !isFetching)) && (
           <motion.div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg shadow-md" role="alert" variants={itemVariants}>
             <p className="font-bold">Estado del Turno</p>
             <p>{error?.message || "No hay turno activo. Por favor, inicia tu turno."}</p>
-            {isCashier && (
+            {(isCashier || isAdmin) && (
               <button
                 onClick={() => iniciarTurnoMutation.mutate()}
                 className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg shadow hover:bg-red-700 transition-colors font-medium text-sm flex items-center"
@@ -241,7 +214,8 @@ const Home = () => {
           </motion.div>
         )}
 
-        {isCashier && turnoData?.turno_abierto && (
+        {/* ✅ Botón cerrar turno visible para cajero o admin cuando esté abierto */}
+        {(isCashier || isAdmin) && turnoData?.turno_abierto && (
           <motion.div className="mb-8 flex justify-center" variants={itemVariants}>
             <motion.button
               onClick={() => cerrarTurnoMutation.mutate()}
@@ -257,7 +231,7 @@ const Home = () => {
 
         <h2 className="text-2xl font-bold text-gray-800 mb-5">Resumen de Hoy</h2>
         <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10" variants={containerVariants} initial="hidden" animate="visible">
-          {isLoading && isCashier ? (
+          {isLoading && (isCashier || isAdmin) ? (
             <>
               {[1,2,3].map(i => (
                 <div key={i} className="bg-white rounded-xl shadow-lg p-6 flex items-center space-x-4 animate-pulse border border-gray-100">
@@ -287,8 +261,10 @@ const Home = () => {
           )}
         </motion.div>
 
-        {/* Mesas Activas */}
-        {!isCashier || (isCashier && turnoData?.turno_abierto) ? (
+        {/* Mesas Activas (cajero/admin no bloquea por turno cerrado en tu lógica original; aquí lo mostramos si
+            a) no es cajero (mesero/admin) o
+            b) es cajero/admin y hay turno abierto) */}
+        {(!(isCashier) || (isCashier || isAdmin) && turnoData?.turno_abierto) ? (
           <motion.div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100" variants={itemVariants} initial="hidden" animate="visible">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold text-gray-800">Mesas Activas</h2>
@@ -308,12 +284,12 @@ const Home = () => {
                 ))
               ) : tablesError ? (
                 <div className="col-span-full text-red-600">Error al cargar mesas. Intenta de nuevo.</div>
-              ) : bookedTables.length === 0 ? (
+              ) : OcupadoTables.length === 0 ? (
                 <div className="col-span-full text-gray-600">
-                  No hay mesas en <span className="font-semibold">booked</span> por ahora.
+                  No hay mesas en <span className="font-semibold">Ocupado</span> por ahora.
                 </div>
               ) : (
-                bookedTables.map((table) => (
+                OcupadoTables.map((table) => (
                   <motion.div
                     key={table.id || table._id}
                     onClick={() => navigate('/orders')}
@@ -325,7 +301,7 @@ const Home = () => {
                     </div>
                     <p className="text-center font-semibold text-lg text-orange-800">Mesa {table.table_no ?? table.id ?? ""}</p>
                     <p className="text-center text-sm text-orange-600 mt-1">
-                      Booked {table.time_in_status ? ` • ${table.time_in_status}` : ""}{table.customer_name ? ` • ${table.customer_name}` : ""}
+                      Ocupado {table.time_in_status ? ` • ${table.time_in_status}` : ""}{table.customer_name ? ` • ${table.customer_name}` : ""}
                     </p>
                   </motion.div>
                 ))
