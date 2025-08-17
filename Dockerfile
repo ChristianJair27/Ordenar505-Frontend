@@ -1,20 +1,31 @@
 # ---- Build (Vite) ----
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+
+# Copia sólo lo necesario para resolver deps
+COPY package.json package-lock.json ./
+# Si NO tienes package-lock.json en el repo, cambia a:
+# COPY package.json ./
+# RUN npm install --no-audit
+RUN npm ci --no-audit
+
+# Copia el resto del código
 COPY . .
-# Si usas variables en build: todas deben ser VITE_*
+
+# Si usas variables de build en Vite, deben empezar con VITE_
+# (ej: --build-arg VITE_API_URL=...)
 RUN npm run build
 
 # ---- Runtime (Nginx) ----
 FROM nginx:alpine
-# SPA fallback: servimos index.html para rutas de React Router
+ENV NODE_ENV=production
+
+# SPA fallback: React Router → siempre devolver index.html
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Archivos estáticos generados por Vite
+# Archivos estáticos de Vite
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["nginx", "-g", "daemon off;"]  
