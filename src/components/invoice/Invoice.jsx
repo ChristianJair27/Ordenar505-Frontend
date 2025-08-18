@@ -158,7 +158,7 @@ html, body {
               {order.items.map((item, i) => (
                 <li key={i} className="flex justify-between text-xs">
                   <span>{item.item_name} x{item.quantity}</span>
-                  <span>${(item.price * item.quantity).toFixed(2)}</span>
+                  <span>${(item.price)}</span>
                 </li>
               ))}
             </ul>

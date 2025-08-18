@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import { motion } from "framer-motion";
 import { FiDollarSign, FiUser, FiCheckSquare } from "react-icons/fi";
