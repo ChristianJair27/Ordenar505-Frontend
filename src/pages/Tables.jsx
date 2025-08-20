@@ -77,13 +77,13 @@ const Tables = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredTables.map((table) => (
               <TableCard
-                key={table.id}
-                id={table.id}
-                name={table.table_no}
-                status={table.status}
-                initials={table?.currentOrder?.customerDetails?.name ?? table.table_no.toString().slice(0, 2)}
-                seats={table.seats}
-              />
+  key={table.id}
+  id={table.id}
+  name={table.table_no}
+  status={table.status}
+  customerName={table.customer_name}   // 👈 viene del JOIN
+  seats={table.seats}
+/>
             ))}
           </div>
         ) : (

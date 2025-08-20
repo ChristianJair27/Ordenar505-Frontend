@@ -1,12 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { getAvatarName, getBgColor } from "../../utils";
 import { useDispatch } from "react-redux";
 import { updateTable } from "../../redux/slices/customerSlice";
 import { FaChair, FaUserAlt } from "react-icons/fa";
 import { GiRoundTable } from "react-icons/gi";
 
-const TableCard = ({ id, name, status, initials, seats }) => {
+const TableCard = ({ id, name, status, customerName, seats }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -23,23 +22,23 @@ const TableCard = ({ id, name, status, initials, seats }) => {
     Ocupado: {
       bg: "bg-green-100",
       text: "text-green-800",
-      icon: "🟢"
+      icon: "🟢",
     },
     Disponible: {
       bg: "bg-blue-100",
       text: "text-blue-800",
-      icon: "🔵"
+      icon: "🔵",
     },
     Occupied: {
       bg: "bg-orange-100",
       text: "text-orange-800",
-      icon: "🟠"
+      icon: "🟠",
     },
     Dirty: {
       bg: "bg-red-100",
       text: "text-red-800",
-      icon: "🔴"
-    }
+      icon: "🔴",
+    },
   };
 
   const currentStatus = statusStyles[status] || statusStyles.Disponible;
@@ -58,7 +57,9 @@ const TableCard = ({ id, name, status, initials, seats }) => {
             <GiRoundTable className="text-2xl mr-2" />
             <h2 className="text-xl font-bold">Mesa {name}</h2>
           </div>
-          <span className={`${currentStatus.bg} ${currentStatus.text} text-xs font-semibold px-2 py-1 rounded-full`}>
+          <span
+            className={`${currentStatus.bg} ${currentStatus.text} text-xs font-semibold px-2 py-1 rounded-full`}
+          >
             {status}
           </span>
         </div>
@@ -66,31 +67,41 @@ const TableCard = ({ id, name, status, initials, seats }) => {
 
       {/* Contenido principal */}
       <div className="bg-white p-5">
-        {/* Avatar o indicador de cliente */}
         <div className="flex flex-col items-center mb-4">
-          <div 
+          <div
             className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white mb-2 ${
-              initials ? "" : "bg-gray-200"
+              customerName ? "bg-blue-500" : "bg-gray-200"
             }`}
-            style={{ backgroundColor: initials ? getBgColor() : "" }}
           >
-            {initials ? getAvatarName(String(initials)) : <FaUserAlt className="text-gray-400" />}
+            {customerName ? customerName[0]?.toUpperCase() : <FaUserAlt className="text-gray-400" />}
           </div>
           <p className="text-sm text-gray-600">
-            {initials ? `Reservado a: ${initials}` : "Disponible"}
+            {status === "Ocupado"
+              ? `Reservado a: ${customerName ?? "N/A"}`
+              : "Disponible"}
           </p>
         </div>
 
         {/* Detalles de la mesa */}
         <div className="grid grid-cols-2 gap-4 text-center">
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <div className="flex justify-center items-center text-blue-600 mb-1">
-              <FaChair className="mr-1" />
-              <span className="font-medium">Asientos</span>
+          {status === "Ocupado" ? (
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="flex justify-center items-center text-green-600 mb-1">
+                <FaUserAlt className="mr-1" />
+                <span className="font-medium">Mesero</span>
+              </div>
+              <span className="text-lg font-bold">{customerName ?? "N/A"}</span>
             </div>
-            <span className="text-lg font-bold">{seats}</span>
-          </div>
-          
+          ) : (
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="flex justify-center items-center text-blue-600 mb-1">
+                <FaChair className="mr-1" />
+                <span className="font-medium">Asientos</span>
+              </div>
+              <span className="text-lg font-bold">{seats}</span>
+            </div>
+          )}
+
           <div className="bg-gray-50 p-3 rounded-lg">
             <div className="flex justify-center items-center text-blue-600 mb-1">
               <span className="font-medium">Estado</span>
@@ -103,14 +114,16 @@ const TableCard = ({ id, name, status, initials, seats }) => {
       </div>
 
       {/* Footer con acción */}
-      <div className={`px-4 py-3 ${
-        status === "Ocupado" ? "bg-gray-100" : "bg-blue-50"
-      }`}>
+      <div
+        className={`px-4 py-3 ${
+          status === "Ocupado" ? "bg-gray-100" : "bg-blue-50"
+        }`}
+      >
         <button
           disabled={status === "Ocupado"}
           className={`w-full py-2 rounded-md font-medium text-sm ${
-            status === "Ocupado" 
-              ? "text-gray-500 cursor-not-allowed" 
+            status === "Ocupado"
+              ? "text-gray-500 cursor-not-allowed"
               : "bg-blue-600 text-white hover:bg-blue-700"
           }`}
         >

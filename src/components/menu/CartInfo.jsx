@@ -103,15 +103,7 @@ const CartInfo = () => {
 
                 {/* Acciones para el ítem */}
                 <div className="flex justify-end space-x-2 mt-3 pt-3 border-t border-gray-100">
-                  {/* Botón de Editar (puedes implementar la lógica luego) */}
-                  <button
-                    onClick={() => console.log("Editar ítem:", item.id)} // Placeholder para editar
-                    className="text-blue-500 hover:text-blue-700 p-2 rounded-full hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    aria-label={`Editar ${item.name}`}
-                    title="Editar cantidad o notas"
-                  >
-                    <FaRegEdit className="text-base" />
-                  </button>
+                  
                   {/* Botón de Eliminar */}
                   <button
                     onClick={() => handleRemove(item.id, item.name)}
@@ -131,10 +123,7 @@ const CartInfo = () => {
       {/* Sección de Resumen de Totales y Botón de Acción */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 p-5 shadow-inner">
         <div className="space-y-3 mb-5">
-          <div className="flex justify-between text-base text-gray-700">
-            <span className="font-medium">Subtotal:</span>
-            <span className="font-semibold">${subtotal.toFixed(2)}</span>
-          </div>
+          
 
           {/* Puedes añadir impuestos, descuentos, etc. aquí */}
           {/* <div className="flex justify-between text-sm text-gray-600">

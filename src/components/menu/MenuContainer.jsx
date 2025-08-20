@@ -92,7 +92,7 @@ const MenuContainer = () => {
             className={`
               flex-shrink-0 min-w-[150px] md:min-w-[180px] h-28 rounded-xl p-4 flex flex-col justify-between items-start
               transition-all duration-300 ease-in-out cursor-pointer
-              shadow-sm hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2
+              shadow-2xl hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2
               ${selectedCategory?.id === category.id
                 ? "text-white ring-blue-500 ring-offset-blue-100"
                 : "bg-white text-gray-800 hover:bg-gray-100 ring-gray-200 ring-offset-white"
@@ -120,7 +120,7 @@ const MenuContainer = () => {
                 {category.name}
               </h3>
               <p className="text-xs text-opacity-80">
-                <span className="font-semibold">{dishes.filter(d => d.category_id === category.id).length}</span> items
+                <span className="font-semibold">{dishes.filter(d => d.category_id === category.id).length}</span> articulos
               </p>
             </div>
           </button>
@@ -138,7 +138,7 @@ const MenuContainer = () => {
             <p className="text-gray-500 text-base md:text-lg">No hay platillos en esta categoría</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 2xl:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
             {dishes
               .filter((dish) => dish.category_id === selectedCategory?.id)
               .map((item) => (
@@ -153,7 +153,7 @@ const MenuContainer = () => {
                         
                       </div>
                       {item.description && (
-                        <p className="text-gray-600 text-xs md:text-sm mt-1 line-clamp-3">
+                        <p className="text-gray-600 text-xs md:text-2xl mt-1 line-clamp-3">
                           {item.description}
                         </p>
                       )}
@@ -174,11 +174,11 @@ const MenuContainer = () => {
                           onClick={() => decrement(item.id)}
                           className="p-2 text-gray-600 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           disabled={itemCounts[item.id] === 0}
-                          aria-label={`Disminuir cantidad de ${item.name}`}
+                          aria-label={`Di2xlinuir cantidad de ${item.name}`}
                         >
-                          <FaMinus className="text-sm" />
+                          <FaMinus className="text-2xl" />
                         </button>
-                        <span className="px-3 font-semibold min-w-[30px] text-center text-sm md:text-base text-gray-800">
+                        <span className="px-3 font-semibold min-w-[30px] text-center text-2xl md:text-base text-gray-800">
                           {itemCounts[item.id]}
                         </span>
                         <button
@@ -186,21 +186,21 @@ const MenuContainer = () => {
                           className="p-2 text-gray-600 hover:text-blue-600 transition-colors"
                           aria-label={`Aumentar cantidad de ${item.name}`}
                         >
-                          <FaPlus className="text-sm" />
+                          <FaPlus className="text-2xl" />
                         </button>
                       </div>
 
                       <button
                         onClick={() => handleAddToCart(item)}
                         disabled={itemCounts[item.id] === 0}
-                        className={`flex items-center px-4 py-2 rounded-full text-sm font-semibold shadow-md
+                        className={`flex items-center px-4 py-2 rounded-full text-2xl font-semibold shadow-md
                           ${itemCounts[item.id] > 0
                             ? "bg-green-600 text-white hover:bg-green-700 active:bg-green-800"
                             : "bg-gray-200 text-gray-500 cursor-not-allowed"
                           } transition-all duration-200 ease-in-out
                         `}
                       >
-                        <FaShoppingCart className="mr-1 text-base" />
+                        <FaShoppingCart className="mr-1 text-2x1" />
                         
                       </button>
                     </div>

@@ -95,9 +95,7 @@ const Menu = () => {
 
         {/* Resumen (solo md+) */}
         <div className="hidden md:flex md:w-96 border-l border-gray-200 bg-white flex-col flex-shrink-0 pb-16">
-          <div className="p-4 border-b border-gray-200">
-            <CustomerInfo />
-          </div>
+          
           <div className="flex-1 overflow-y-auto p-4">
             <CartInfo />
           </div>

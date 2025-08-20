@@ -76,7 +76,7 @@ html, body {
           (it) => `
         <li class="item small">
           <span>${it.item_name} x${it.quantity}</span>
-          <span>$${(Number(it.price)}</span>
+          <span>$${(Number(it.price))}</span>
         </li>`
         )
         .join("")}
