@@ -86,10 +86,10 @@ const RecentOrders = () => {
                     }
                   >
                     <option className="text-yellow-500" value="In Progress">
-                      In Progress
+                      En Progreso
                     </option>
                     <option className="text-green-500" value="Ready">
-                      Ready
+                      Listo
                     </option>
                   </select>
                 </td>
