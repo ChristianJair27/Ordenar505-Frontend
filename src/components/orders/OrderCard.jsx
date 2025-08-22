@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { FaCheckDouble, FaUtensils, FaReceipt, FaPrint } from "react-icons/fa";
+import { FaCheckDouble, FaUtensils, FaReceipt, FaPrint, FaPlusCircle } from "react-icons/fa";
 import { BsClockHistory, BsCheckCircleFill } from "react-icons/bs";
 import { getAvatarName } from "../../utils/index";
 import { useNavigate } from "react-router-dom";
@@ -50,22 +50,23 @@ const OrderCard = ({
     order.order_status || order.status || order.orderStatus || ""
   ).toLowerCase();
   const isReady = status.includes("ready") || status.includes("listo");
+  const isCanceled = status.includes("cancel");
 
   const formatOrderId = (id) => {
     return id ? String(id).slice(-6) : "N/A";
   };
 
   // --- Ticket rápido con el MISMO formato del Invoice (58mm) ---
-const buildCustomerTicketHTML = (order) => {
-  const dateStr = new Date(order?.order_date || Date.now()).toLocaleString();
+  const buildCustomerTicketHTML = (order) => {
+    const dateStr = new Date(order?.order_date || Date.now()).toLocaleString();
 
-  // Asegurar items como array
-  let safeItems = order?.items || [];
-  if (typeof safeItems === "string") {
-    try { safeItems = JSON.parse(safeItems); } catch { safeItems = []; }
-  }
+    // Asegurar items como array
+    let safeItems = order?.items || [];
+    if (typeof safeItems === "string") {
+      try { safeItems = JSON.parse(safeItems); } catch { safeItems = []; }
+    }
 
-  return `
+    return `
 <!doctype html>
 <html>
 <head>
@@ -140,20 +141,30 @@ const buildCustomerTicketHTML = (order) => {
   </script>
 </body>
 </html>
-  `;
-};
+    `;
+  };
 
-const handleQuickPrint = () => {
-  const html = buildCustomerTicketHTML(order);
-  const w = window.open("", "_blank", "width=400,height=800");
-  if (!w) return;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-};
-// --- fin ---
+  const handleQuickPrint = () => {
+    const html = buildCustomerTicketHTML(order);
+    const w = window.open("", "_blank", "width=400,height=800");
+    if (!w) return;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+  // --- fin ---
 
-
+  // NUEVO: ir al menú para AGREGAR artículos a esta orden (sin borrar)
+  const handleAddItems = () => {
+    navigate(`/menu?mode=append&orderId=${order.id}`, {
+      state: {
+        mode: "append",          // indica que es para agregar
+        orderId: order.id,       // id de la orden destino
+        lockRemoval: true,       // el menú debe deshabilitar quitar artículos
+      },
+      replace: false,
+    });
+  };
 
   return (
     <div className="w-full max-w-lg bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow duration-200 mb-6">
@@ -213,7 +224,7 @@ const handleQuickPrint = () => {
               <>
                 <BsClockHistory className="text-yellow-500 text-xl mr-2" />
                 <span className="text-yellow-800 font-medium">
-                  {status.includes("cancel") ? "Cancelada" : "En preparación"}
+                  {isCanceled ? "Cancelada" : "En preparación"}
                 </span>
               </>
             )}
@@ -221,7 +232,7 @@ const handleQuickPrint = () => {
           <p className="text-sm text-gray-600 mt-1 ml-7">
             {isReady
               ? "El pedido está listo para entregar"
-              : status.includes("cancel")
+              : isCanceled
               ? "Pedido cancelado"
               : "Estamos preparando tu pedido"}
           </p>
@@ -237,7 +248,19 @@ const handleQuickPrint = () => {
 
         {/* Botones de acción */}
         <div className="flex justify-end flex-wrap gap-3 mt-6">
-          {/* NUEVO: imprimir ticket rápido (siempre disponible) */}
+          {/* NUEVO: Agregar artículos (solo cuando la orden no está completada ni cancelada) */}
+          {!isCompleted && !isCanceled && (
+            <button
+              onClick={handleAddItems}
+              className="flex items-center bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              title="Agregar artículos a esta orden"
+            >
+              <FaPlusCircle className="mr-2" />
+              Agregar artículos
+            </button>
+          )}
+
+          {/* imprimir ticket rápido */}
           <button
             onClick={handleQuickPrint}
             className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
@@ -253,7 +276,7 @@ const handleQuickPrint = () => {
               className="flex items-center bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
             >
               <FaReceipt className="mr-2" />
-              Generar Factura
+              Confirmar Orden
             </button>
           ) : (
             <button
@@ -261,7 +284,7 @@ const handleQuickPrint = () => {
               className="flex items-center bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
             >
               <FaPrint className="mr-2" />
-              Ver Factura
+              Ver Orden
             </button>
           )}
         </div>

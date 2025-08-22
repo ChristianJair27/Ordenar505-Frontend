@@ -15,72 +15,99 @@ const OrderDetail = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const user = useSelector((state) => state.user.user);
 
+  // Usa una sola base para todo
+  const BASE = import.meta.env.VITE_BACKEND_URL;
+
   const fetchOrder = async () => {
-    const API_URL = import.meta.env.VITE_API_URL;
     try {
-      const res = await axiosWrapper.get(`${API_URL}/api/orders/${id}`);
-      setOrder(res.data.data);
+      // Primero intenta plural
+      try {
+        const res = await axiosWrapper.get(`${BASE}/api/orders/${id}`, { withCredentials: true });
+        setOrder(res.data.data || res.data);
+        return;
+      } catch (e) {
+        if (!(e?.response?.status === 404)) throw e;
+      }
+      // Fallback singular
+      const res2 = await axiosWrapper.get(`${BASE}/api/order/${id}`, { withCredentials: true });
+      setOrder(res2.data.data || res2.data);
     } catch (error) {
       console.error("Error al obtener la orden:", error);
+      enqueueSnackbar("No se pudo cargar la orden.", { variant: "error" });
     }
   };
 
   useEffect(() => {
     fetchOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleConfirm = async () => {
     setIsProcessing(true);
     try {
-
-
-// 1. Verificar si hay turno activo primero
-      const shiftResponse = await axiosWrapper.get('/api/turno-actual', {
-        params: { user_id: user?.id }
+      // 1) Verificar turno activo
+      const shiftResp = await axiosWrapper.get(`${BASE}/api/turno-actual`, {
+        params: { user_id: user?.id },
+        withCredentials: true,
       });
 
-      if (!shiftResponse.data) {
-        enqueueSnackbar("No tienes un turno activo. Por favor abre un turno primero.", { 
+      const shift = shiftResp?.data;
+      if (!shift) {
+        enqueueSnackbar("No tienes un turno activo. Abre un turno primero.", {
           variant: "error",
-          autoHideDuration: 5000
+          autoHideDuration: 5000,
         });
         return;
       }
 
+      // 2) Registrar movimiento de caja
+      await axiosWrapper.post(
+        `${BASE}/api/cash-register`,
+        {
+          type: "venta",
+          amount: order.total_with_tax,
+          payment_method: paymentMethod,
+          order_id: order.id,
+          description: "Pago de Orden",
+          user_id: user?.id || null,
+          shift_id: shift.id,
+        },
+        { withCredentials: true }
+      );
 
-      await axiosWrapper.post(`${import.meta.env.VITE_BACKEND_URL}/api/cash-register`, {
-        type: "venta",
-        amount: order.total_with_tax,
-        payment_method: paymentMethod,
-        order_id: order.id,
-        description: "Pago de Orden",
-        user_id: user?.id || null,
-        shift_id: shiftResponse.data.id // Incluir el ID del turno
-      }, {
-        withCredentials: true
-      });
+      // 3) Actualizar orden como pagada (usar claves que espera tu backend)
+      const body = {
+        orderStatus: "pagado",          // 👈 clave correcta
+        paymentMethod: paymentMethod,   // 👈 clave correcta
+        shift_id: shift.id,
+      };
 
-      await axiosWrapper.put(`${import.meta.env.VITE_BACKEND_URL}/api/orders/${order.id}`, {
-        status: "pagado",
-        payment_method: paymentMethod,
-        shift_id: shiftResponse.data.id
-      });
+      // intenta plural y luego singular
+      try {
+        await axiosWrapper.put(`${BASE}/api/orders/${order.id}`, body, { withCredentials: true });
+      } catch (e) {
+        if (!(e?.response?.status === 404)) throw e;
+        await axiosWrapper.put(`${BASE}/api/order/${order.id}`, body, { withCredentials: true });
+      }
 
+      // 4) Refresca la orden y muestra factura
       await fetchOrder();
+      enqueueSnackbar("¡Pago confirmado!", { variant: "success" });
       setShowInvoice(true);
     } catch (error) {
-      console.error("Error al confirmar el pago:", error.response?.data || error.message);
-      alert("No tienes un turno activo.");
+      console.error("Error al confirmar el pago:", error?.response?.data || error.message);
+      enqueueSnackbar("No se pudo confirmar el pago.", { variant: "error" });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  if (!order) return (
-    <div className="flex justify-center items-center h-screen">
-      <div className="animate-pulse text-xl text-gray-600">Cargando orden...</div>
-    </div>
-  );
+  if (!order)
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-pulse text-xl text-gray-600">Cargando orden...</div>
+      </div>
+    );
 
   return (
     <div className="max-w-2xl mx-auto bg-white shadow-lg rounded-xl overflow-hidden">
@@ -88,14 +115,14 @@ const OrderDetail = () => {
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 p-6 text-white">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Detalle de Orden</h1>
-          <button 
+          <button
             onClick={() => window.history.back()}
             className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors"
           >
             <FiArrowLeft /> Volver
           </button>
         </div>
-        
+
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="font-semibold">Cliente:</p>
@@ -111,8 +138,12 @@ const OrderDetail = () => {
           </div>
           <div>
             <p className="font-semibold">Estado:</p>
-            <p className={`inline-flex items-center ${order.order_status === 'pagado' ? 'text-green-300' : 'text-yellow-300'}`}>
-              {order.order_status === 'pagado' && <FaCheckCircle className="mr-1" />}
+            <p
+              className={`inline-flex items-center ${
+                order.order_status === "pagado" ? "text-green-300" : "text-yellow-300"
+              }`}
+            >
+              {order.order_status === "pagado" && <FaCheckCircle className="mr-1" />}
               {order.order_status}
             </p>
           </div>
@@ -124,7 +155,7 @@ const OrderDetail = () => {
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
           <FiPrinter /> Detalle del Pedido
         </h2>
-        
+
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-100">
@@ -136,10 +167,10 @@ const OrderDetail = () => {
             </thead>
             <tbody>
               {order.items.map((item, index) => (
-                <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                   <td className="py-3 px-4">{item.item_name}</td>
                   <td className="py-3 px-4 text-center">x{item.quantity}</td>
-                  <td className="py-3 px-4 text-right">${(item.price)}</td>
+                  <td className="py-3 px-4 text-right">${item.price}</td>
                 </tr>
               ))}
             </tbody>
@@ -152,10 +183,12 @@ const OrderDetail = () => {
             <span>Subtotal:</span>
             <span className="font-medium">${Number(order.total || 0).toFixed(2)}</span>
           </div>
-          
+
           <div className="flex justify-between py-2">
             <span className="font-bold text-lg">Total:</span>
-            <span className="font-bold text-lg text-blue-600">${Number(order.total_with_tax || 0).toFixed(2)}</span>
+            <span className="font-bold text-lg text-blue-600">
+              ${Number(order.total_with_tax || 0).toFixed(2)}
+            </span>
           </div>
         </div>
 
@@ -165,18 +198,22 @@ const OrderDetail = () => {
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <FiCreditCard /> Método de Pago
             </h3>
-            
+
             <div className="grid grid-cols-2 gap-4 mb-6">
               <button
                 onClick={() => setPaymentMethod("efectivo")}
-                className={`p-4 border rounded-lg flex flex-col items-center transition-all ${paymentMethod === 'efectivo' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                className={`p-4 border rounded-lg flex flex-col items-center transition-all ${
+                  paymentMethod === "efectivo" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-300"
+                }`}
               >
                 <FiDollarSign className="text-2xl mb-2" />
                 <span>Efectivo</span>
               </button>
               <button
                 onClick={() => setPaymentMethod("tarjeta")}
-                className={`p-4 border rounded-lg flex flex-col items-center transition-all ${paymentMethod === 'tarjeta' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                className={`p-4 border rounded-lg flex flex-col items-center transition-all ${
+                  paymentMethod === "tarjeta" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-300"
+                }`}
               >
                 <FiCreditCard className="text-2xl mb-2" />
                 <span>Tarjeta</span>
@@ -186,13 +223,24 @@ const OrderDetail = () => {
             <button
               onClick={handleConfirm}
               disabled={isProcessing}
-              className={`w-full py-4 rounded-lg font-bold text-white flex items-center justify-center gap-2 ${isProcessing ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'} transition-colors`}
+              className={`w-full py-4 rounded-lg font-bold text-white flex items-center justify-center gap-2 ${
+                isProcessing ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
+              } transition-colors`}
             >
               {isProcessing ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   Procesando...
                 </>
