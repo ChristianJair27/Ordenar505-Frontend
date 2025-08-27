@@ -8,6 +8,9 @@ import { removeCustomer } from "../../redux/slices/customerSlice";
 import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { setUser } from "../../redux/slices/userSlice";
+import { removeUser } from "../../redux/slices/userSlice";
+import { logout } from "../../https/index"; // si ya lo exportas
 // intenta usar tu cliente centralizado si existe
 import * as http from "../../https/index";
 
@@ -30,7 +33,36 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
   const httpClient =
     http.api || http.client || http.axiosInstance || http.default || axios;
 
+
+// ✅ Logout reutilizando tu flujo ya probado
+const logoutMutation = useMutation({
+  mutationFn: () => logout(), // si no tienes endpoint real, puedes dejarla vacía: () => Promise.resolve()
+  onSettled: () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("token");
+    dispatch(removeUser());
+    // redirige a tu pantalla de perfiles/login
+    navigate("/profiles", { replace: true });
+  },
+  onError: (error) => {
+    console.error("Logout error:", error);
+    // Aun con error del backend, hacemos logout local
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("token");
+    dispatch(removeUser());
+    navigate("/profiles", { replace: true });
+  },
+});
+
+
+
   // --------- helpers (rehidratación & rutas plural/singular) ---------
+
+
+
+
+
+  
   const fetchOrderById = async (id) => {
     try {
       const r = await httpClient.get(`${API_URL}/api/orders/${id}`);
@@ -96,8 +128,8 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
       dispatch(removeCustomer());
       dispatch(removeAllItems());
 
-      navigate("/orders", { replace: true });
-      setShowInvoice(true);
+      logoutMutation.mutate();
+      
     },
     onError: (error) => {
       console.error(error);
@@ -172,26 +204,32 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
     }
 
     const orderData = {
-      createdBy: {
-        id: user?.id ?? user?._id ?? null,
-        name: user?.name ?? user?.full_name ?? user?.username ?? "Usuario",
-        role: user?.role ?? "user",
-      },
-      customerDetails: {
-        name: user?.name ?? "Usuario",
-        phone: "N/A",
-        guests: customerData?.guests || 1,
-      },
-      orderStatus: "In Progress",
-      bills: {
-        total: total,
-        tax: 0,
-        totalWithTax: total,
-      },
-      items: cartData,       // cada item.price es total del renglón
-      table: tableId,
-      paymentMethod: paymentMethod || "Pending",
-    };
+  // 👇 guarda al MESERO/creador de la orden
+  user_id: user?.id ?? user?._id ?? null,           // <- ID del mesero
+  name: user?.name ?? user?.full_name ?? "Usuario", // <- nombre del mesero (tú ya usas 'name' en orders)
+  created_by_id: user?.id ?? user?._id ?? null,     // (opcional) por compatibilidad
+  created_by_name: user?.name ?? user?.full_name ?? "Usuario",
+
+  createdBy: {
+    id: user?.id ?? user?._id ?? null,
+    name: user?.name ?? user?.full_name ?? user?.username ?? "Usuario",
+    role: user?.role ?? "user",
+  },
+  customerDetails: {
+    name: user?.name ?? "Usuario",
+    phone: "N/A",
+    guests: customerData?.guests || 1,
+  },
+  orderStatus: "In Progress",
+  bills: {
+    total: total,
+    tax: 0,
+    totalWithTax: total,
+  },
+  items: cartData,
+  table: tableId,
+  paymentMethod: paymentMethod || "Pending",
+};
 
     createOrderMutation.mutate(orderData);
   };

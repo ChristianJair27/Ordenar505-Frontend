@@ -3,11 +3,16 @@ import React, { useEffect, useState } from "react";
 import logo from "../assets/images/pena-logo.png";
 import Register from "../components/auth/Register";
 import Login from "../components/auth/Login";
+import { useNavigate } from "react-router-dom";
 
 const Auth = () => {
+  const navigate = useNavigate();
   useEffect(() => {
     document.title = "La Peña de Santiago | Auth";
-  }, []);
+     // 👇 si ya hay token (admin ya inició), manda al home
+    const t = localStorage.getItem("access_token");
+    if (t) navigate("/", { replace: true });
+  }, [navigate]);
 
   const [isRegister, setIsRegister] = useState(false);
 

@@ -13,7 +13,7 @@ const buttons = [
   
 ];
 
-const tabs = ["Caja", "Ordenes", "Usuarios"];
+
 
 const Dashboard = () => {
   useEffect(() => {

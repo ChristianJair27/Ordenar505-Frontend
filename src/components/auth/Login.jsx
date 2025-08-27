@@ -7,70 +7,80 @@ import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
+import { axiosWrapper } from "../../https/axiosWrapper";
 
-const Login = ({ setIsRegister }) => {
-
+const Login = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-
-  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [isLoading, setIsLoading] = useState(false); // opcional; react-query también tiene estado
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData((s) => ({ ...s, [e.target.name]: e.target.value }));
   };
+
+  const loginMutation = useMutation({
+    mutationFn: (reqData) => login(reqData), // tu helper en https/index.js
+    onSuccess: async (res) => {
+      try {
+        // Normaliza posibles formas de respuesta
+        const payload = res?.data?.data || res?.data || {};
+        const token =
+          payload?.token ||
+          payload?.accessToken ||
+          res?.data?.token ||
+          res?.data?.accessToken;
+
+        if (!token) {
+          enqueueSnackbar("No se recibió token del servidor.", { variant: "error" });
+          return;
+        }
+
+        // ✅ Guarda el token válido para todo el flujo
+        localStorage.setItem("access_token", token);
+        localStorage.removeItem("token"); // limpia la vieja clave por compatibilidad
+
+        // Intenta tomar user de la respuesta; si no viene, consulta /users/me
+        let user =
+          payload?.user ||
+          res?.data?.user ||
+          null;
+
+        if (!user) {
+          const me = await axiosWrapper.get("/users/me");
+          user = me?.data;
+        }
+
+        if (!user) {
+          enqueueSnackbar("No se pudo obtener el perfil de usuario.", { variant: "warning" });
+        } else {
+          const { id, name, email, phone, role } = user;
+          dispatch(setUser({ id, name, email, phone, role }));
+        }
+
+        enqueueSnackbar("Sesión iniciada", { variant: "success" });
+        navigate("/", { replace: true });
+      } catch (e) {
+        enqueueSnackbar(e?.message || "Error finalizando el inicio de sesión", { variant: "error" });
+      }
+    },
+    onError: (error) => {
+      const msg = error?.response?.data?.message || "Credenciales inválidas";
+      enqueueSnackbar(msg, { variant: "error" });
+    },
+    onSettled: () => setIsLoading(false),
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setIsLoading(true);
     loginMutation.mutate(formData);
-    
-    console.log("Datos enviados:", formData); // Mostrar datos en consola
-    
-    // Simulando una petición asíncrona
-    setTimeout(() => {
-      setIsLoading(false);
-      // Aquí iría tu lógica real de autenticación
-      // loginMutation.mutate(formData);
-    }, 1500);
   };
-
-
-const loginMutation = useMutation({
-    mutationFn: (reqData) => login(reqData), // viene de https/index.js
-    onSuccess: (res) => {
-  const user = res?.data?.data;
-  const token = res?.data?.token; // ⚠️ ajusta si está más anidado
-
-  if (!user || !token) {
-    enqueueSnackbar("No se pudo obtener el usuario o el token", { variant: "error" });
-    return;
-  }
-
-  localStorage.setItem("token", token); // ✅ Guarda token para axiosWrapper
-  console.log("✅ Token guardado:", token);
-
-  const { id, name, email, phone, role } = user;
-  dispatch(setUser({ id, name, email, phone, role }));
-  navigate("/");
-},
-    onError: (error) => {
-      const { response } = error;
-      enqueueSnackbar(response?.data?.message || "Login failed", {
-        variant: "error",
-      });
-    },
-  });
-
-
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Campo Email */}
+      {/* Email */}
       <div>
         <label className="block text-sm font-medium text-gray-200 mb-1">Correo Electrónico</label>
         <div className="relative">
@@ -84,12 +94,13 @@ const loginMutation = useMutation({
             onChange={handleChange}
             placeholder="ejemplo@restro.com"
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-white/5 border border-white/10 rounded-lg focus:ring-1 focus:ring-yellow-400 focus:border-yellow-400 outline-none transition-all text-white placeholder-gray-400"
+            autoComplete="username"
             required
           />
         </div>
       </div>
 
-      {/* Campo Contraseña */}
+      {/* Password */}
       <div>
         <label className="block text-sm font-medium text-gray-200 mb-1">Contraseña</label>
         <div className="relative">
@@ -103,13 +114,13 @@ const loginMutation = useMutation({
             onChange={handleChange}
             placeholder="••••••••"
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-white/5 border border-white/10 rounded-lg focus:ring-1 focus:ring-yellow-400 focus:border-yellow-400 outline-none transition-all text-white placeholder-gray-400"
+            autoComplete="current-password"
             required
           />
         </div>
       </div>
 
-
-      {/* Botón de Login */}
+      {/* Submit */}
       <motion.button
         type="submit"
         whileHover={{ scale: 1.01 }}

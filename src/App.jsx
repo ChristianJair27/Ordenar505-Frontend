@@ -13,15 +13,17 @@ import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import OrderDetail from "./pages/OrderDetail";
 import CashierDashboard from "./pages/CashierDashboard";
-import '@fontsource/inter'
-import '@fontsource/fira-code'
+import KioskLogin from "./pages/KioskLogin";
+import "@fontsource/inter";
+import "@fontsource/fira-code";
 
-// Layout separado para manejar rutas y loader
+// Layout
 function Layout() {
   const isLoading = useLoadData();
   const location = useLocation();
-  const hideHeaderRoutes = ["/auth"];
-  const { isAuth } = useSelector(state => state.user);
+  // Oculta header también en /profiles
+  const hideHeaderRoutes = ["/auth", "/profiles"];
+  const { isAuth } = useSelector((state) => state.user);
 
   if (isLoading) return <FullScreenLoader />;
 
@@ -29,6 +31,7 @@ function Layout() {
     <>
       {!hideHeaderRoutes.includes(location.pathname) && <Header />}
       <Routes>
+        {/* Landing: si no hay sesión, se manda a /profiles */}
         <Route
           path="/"
           element={
@@ -37,7 +40,10 @@ function Layout() {
             </ProtectedRoutes>
           }
         />
+
+        {/* Dejas /auth por compatibilidad, pero casi no se usará */}
         <Route path="/auth" element={isAuth ? <Navigate to="/" /> : <Auth />} />
+
         <Route
           path="/orders"
           element={
@@ -70,8 +76,12 @@ function Layout() {
             </ProtectedRoutes>
           }
         />
+
+        {/* Públicas */}
         <Route path="/orden/:id" element={<OrderDetail />} />
         <Route path="/cashier-dashboard" element={<CashierDashboard />} />
+        <Route path="/profiles" element={<KioskLogin />} />
+
         <Route path="*" element={<div>Not Found</div>} />
       </Routes>
     </>
@@ -80,37 +90,40 @@ function Layout() {
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
-  if (!isAuth) {
-    return <Navigate to="/auth" />;
+  const token = localStorage.getItem("access_token");
+  // Usa token como “fallback” por si Redux aún no marcó isAuth
+  const authed = isAuth || !!token;
+
+  if (!authed) {
+    // 👈 manda a los perfiles (no a /auth) para evitar el bucle
+    return <Navigate to="/profiles" replace />;
   }
   return children;
 }
 
-// Wrapper para manejar favicon
+// Wrapper para favicon
 function AppWrapper() {
   const location = useLocation();
 
   useEffect(() => {
-    const favicon = document.querySelector("link[rel~='icon']");
-    if (favicon) {
-      favicon.href = "./public/favicon.ico"; // Asegúrate de que este archivo esté en /public
-    } else {
-      const link = document.createElement("link");
+    // En Vite, lo correcto es "/favicon.ico" (no "./public/favicon.ico")
+    const href = "/favicon.ico";
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
       link.rel = "icon";
-      link.href = "./public/favicon.ico";
       document.head.appendChild(link);
     }
+    link.href = href;
   }, [location.pathname]);
 
   return <Layout />;
 }
 
-function App() {
+export default function App() {
   return (
-    <Router >
-  <AppWrapper />
-</Router>
+    <Router>
+      <AppWrapper />
+    </Router>
   );
 }
-
-export default App;

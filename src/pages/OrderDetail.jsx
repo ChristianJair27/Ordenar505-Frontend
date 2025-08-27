@@ -43,64 +43,83 @@ const OrderDetail = () => {
   }, [id]);
 
   const handleConfirm = async () => {
-    setIsProcessing(true);
-    try {
-      // 1) Verificar turno activo
-      const shiftResp = await axiosWrapper.get(`${BASE}/api/turno-actual`, {
-        params: { user_id: user?.id },
-        withCredentials: true,
+  setIsProcessing(true);
+  try {
+    // 1) Turno activo del CAJERO (usuario actual)
+    const shiftResp = await axiosWrapper.get(`${BASE}/api/turno-actual`, {
+      params: { user_id: user?.id },
+      withCredentials: true,
+    });
+    const shift = shiftResp?.data;
+    if (!shift) {
+      enqueueSnackbar("No tienes un turno activo. Abre un turno primero.", {
+        variant: "error",
+        autoHideDuration: 5000,
       });
-
-      const shift = shiftResp?.data;
-      if (!shift) {
-        enqueueSnackbar("No tienes un turno activo. Abre un turno primero.", {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
-        return;
-      }
-
-      // 2) Registrar movimiento de caja
-      await axiosWrapper.post(
-        `${BASE}/api/cash-register`,
-        {
-          type: "venta",
-          amount: order.total_with_tax,
-          payment_method: paymentMethod,
-          order_id: order.id,
-          description: "Pago de Orden",
-          user_id: user?.id || null,
-          shift_id: shift.id,
-        },
-        { withCredentials: true }
-      );
-
-      // 3) Actualizar orden como pagada (usar claves que espera tu backend)
-      const body = {
-        orderStatus: "pagado",          // 👈 clave correcta
-        paymentMethod: paymentMethod,   // 👈 clave correcta
-        shift_id: shift.id,
-      };
-
-      // intenta plural y luego singular
-      try {
-        await axiosWrapper.put(`${BASE}/api/orders/${order.id}`, body, { withCredentials: true });
-      } catch (e) {
-        if (!(e?.response?.status === 404)) throw e;
-        await axiosWrapper.put(`${BASE}/api/order/${order.id}`, body, { withCredentials: true });
-      }
-
-      // 4) Refresca la orden y muestra factura
-      await fetchOrder();
-      enqueueSnackbar("¡Pago confirmado!", { variant: "success" });
-      setShowInvoice(true);
-    } catch (error) {
-      console.error("Error al confirmar el pago:", error?.response?.data || error.message);
-      enqueueSnackbar("No se pudo confirmar el pago.", { variant: "error" });
-    } finally {
-      setIsProcessing(false);
+      return;
     }
-  };
+
+
+    const amount = Number(order?.total_with_tax ?? order?.total ?? 0);
+   if (!amount || Number.isNaN(amount)) {
+     enqueueSnackbar("El total de la orden es inválido.", { variant: "error" });
+     return;
+   }
+
+    // 2) ID del MESERO/CREADOR desde la ORDEN (dueño real de la venta)
+    const waiterId = order?.user_id ?? null;
+      const waiterName = order?.name ?? null;
+
+    if (!waiterId) {
+      enqueueSnackbar(
+        "La orden no tiene user_id del mesero/creador. No se registrará la venta para evitar atribuirla mal.",
+        { variant: "error", autoHideDuration: 6000 }
+      );
+      console.warn("Order sin user_id; order:", order);
+      return;
+    }
+
+    // 3) Registrar movimiento de caja: DUEÑO = mesero (waiterId)
+       await axiosWrapper.post(`${BASE}/api/cash-register`, {
+     type: "venta",
+     amount,                               // ✅ número
+     payment_method: paymentMethod || "efectivo",
+     order_id: Number(order.id),           // ✅ asegura número
+     cashier_id: user?.id ?? null,         // ✅ quién cobra
+     description: `Pago de Orden #${order.id} | Mesero: ${waiterName ?? "N/D"} | Cajero: ${user?.name ?? "N/D"}`, // ✅ sin llave extra
+     shift_id: shift?.id ?? null,
+   }, { withCredentials: true });
+
+    // 4) Actualizar orden como pagada
+    const body = {
+      orderStatus: "pagado",
+      paymentMethod: paymentMethod,
+      shift_id: shift.id,
+      // Si tu backend guarda también quién cobró, puedes enviar:
+      cashier_id: user?.id ?? null,
+      // cashier_name: user?.name ?? null,
+    };
+
+    try {
+      await axiosWrapper.put(`${BASE}/api/orders/${order.id}`, body, { withCredentials: true });
+    } catch (e) {
+      if (!(e?.response?.status === 404)) throw e;
+      await axiosWrapper.put(`${BASE}/api/order/${order.id}`, body, { withCredentials: true });
+    }
+
+    // 5) Refrescar y mostrar factura
+    await fetchOrder();
+    enqueueSnackbar("¡Pago confirmado!", { variant: "success" });
+    setShowInvoice(true);
+  } catch (error) {
+    console.error("Error al confirmar el pago:", error?.response?.data || error.message);
+    enqueueSnackbar("No se pudo confirmar el pago.", { variant: "error" });
+  } finally {
+    setIsProcessing(false);
+  }
+};
+
+
 
   if (!order)
     return (
