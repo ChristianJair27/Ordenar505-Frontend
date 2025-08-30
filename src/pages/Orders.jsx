@@ -15,6 +15,12 @@ const Orders = () => {
   const [filter, setFilter] = useState("progress"); // 'progress' o 'completed'
   const { enqueueSnackbar } = useSnackbar();
 
+   const handleWaiterChanged = (orderId, newWaiterId) => {
+  // puedes refetchear con React Query, o mutar el estado local
+  // ejemplo simple si tienes una lista en estado local:
+  setOrders(prev => prev.map(o => o.id === orderId ? { ...o, waiter_id: newWaiterId } : o));
+};
+
   useEffect(() => {
     document.title = "La Peña de Santiago | Órdenes";
   }, []);
@@ -103,7 +109,9 @@ const Orders = () => {
                 onInvoiceClick={() => {
                   setSelectedOrder(order);
                   setShowInvoice(true);
+                  
                 }}
+                onWaiterChanged={handleWaiterChanged}
               />
             ))}
           </div>

@@ -564,72 +564,234 @@ const loadData = async () => {
                 </div>
               </div>
               
-              {/* Recent Transactions */}
-              <div className="mt-8">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">Últimos movimientos</h3>
-                
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Order ID
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Mesero
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Turno
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Hora y Fecha
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Descripción
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Total
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Pago
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {orders.length > 0 ? (
-                        orders.map((order) => (
-                          <tr
-                            key={order.id}
-                            className="hover:bg-gray-50 transition-colors duration-150" 
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">#{order.id}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{order.user_name || "N/A"}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">Turno #{order.shift_id || "N/A"}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                              {order.date ? formatDateAndTime(order.date) : "N/A"}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{order.description || "N/A"}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <span className={order.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}>
-                                ${Number(order.amount).toFixed(2) || "0.00"}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                              {order.payment_method || "N/A"}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="7" className="px-6 py-4 text-center text-gray-500">
-                            No hay movimientos registrados
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+              
+<div className="mt-8">
+  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+    <h3 className="text-lg font-semibold text-gray-700">Últimos movimientos</h3>
+    
+    {/* Filtros y búsqueda */}
+    <div className="flex flex-wrap gap-2">
+      <select className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <option value="">Todos los métodos de pago</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+        <option value="digital">Digital</option>
+      </select>
+      
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+        <input
+          type="text"
+          placeholder="Buscar..."
+          className="text-sm border border-gray-300 rounded-lg pl-10 pr-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+      </div>
+    </div>
+  </div>
+
+  <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+    {/* Vista de escritorio (tabla) */}
+    <div className="hidden md:block overflow-x-auto">
+      <table className="w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Order ID
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Mesero
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Cajero
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Turno
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Fecha y Hora
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Descripción
+            </th>
+            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Total
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+              Pago
+            </th>
+          </tr>
+        </thead>
+
+        <tbody className="bg-white divide-y divide-gray-200">
+          {orders.length > 0 ? (
+            orders.map((order) => (
+              <tr key={order.id} className="hover:bg-gray-50 transition-colors duration-150">
+                {/* ID */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  #{order.id}
+                </td>
+
+                {/* Mesero */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                  <div className="flex items-center">
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-800 font-medium text-xs mr-2">
+                      {order.waiter_name ? order.waiter_name.charAt(0).toUpperCase() : "N"}
+                    </div>
+                    {order.waiter_name || "N/A"}
+                  </div>
+                </td>
+
+                {/* Cajero */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                  {order.cashier_name || "N/D"}
+                </td>
+
+                {/* Turno */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                  {order.shift_id ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                      Turno #{order.shift_id}
+                    </span>
+                  ) : (
+                    "N/A"
+                  )}
+                </td>
+
+                {/* Fecha */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {order.date ? formatDateAndTime(order.date) : "N/A"}
+                </td>
+
+                {/* Descripción */}
+                <td className="px-6 py-4 text-sm text-gray-700 max-w-xs break-words">
+                  {order.description || "N/A"}
+                </td>
+
+                {/* Total */}
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right">
+                  <span className={order.type === "ingreso" || order.type === "venta" ? "text-green-600" : "text-red-600"}>
+                    ${Number(order.amount || 0).toFixed(2)}
+                  </span>
+                </td>
+
+                {/* Pago */}
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    order.payment_method === "efectivo" 
+                      ? "bg-green-100 text-green-800" 
+                      : order.payment_method === "tarjeta"
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-purple-100 text-purple-800"
+                  }`}>
+                    {order.payment_method || "N/D"}
+                  </span>
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="8" className="px-6 py-8 text-center">
+                <div className="flex flex-col items-center justify-center text-gray-400">
+                  <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="text-lg font-medium">No hay movimientos registrados</p>
+                  <p className="text-sm mt-1">Los movimientos aparecerán aquí una vez que se realicen</p>
+                </div>
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Vista móvil (tarjetas) */}
+    <div className="md:hidden">
+      {orders.length > 0 ? (
+        <div className="divide-y divide-gray-200">
+          {orders.map((order) => (
+            <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors duration-150">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <span className="text-sm font-medium text-gray-900">#{order.id}</span>
+                  <div className="flex items-center mt-1">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mr-2 ${
+                      order.payment_method === "efectivo" 
+                        ? "bg-green-100 text-green-800" 
+                        : order.payment_method === "tarjeta"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-purple-100 text-purple-800"
+                    }`}>
+                      {order.payment_method || "N/D"}
+                    </span>
+                    {order.shift_id && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                        Turno #{order.shift_id}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className={`text-sm font-semibold ${
+                  order.type === "ingreso" || order.type === "venta" ? "text-green-600" : "text-red-600"
+                }`}>
+                  ${Number(order.amount || 0).toFixed(2)}
+                </span>
+              </div>
+              
+              <div className="text-sm text-gray-500 mb-2">
+                {order.date ? formatDateAndTime(order.date) : "N/A"}
+              </div>
+              
+              <div className="text-sm text-gray-700 mb-3">
+                {order.description || "N/A"}
+              </div>
+              
+              <div className="flex justify-between text-sm text-gray-600">
+                <div>
+                  <span className="font-medium">Mesero:</span> {order.waiter_name || "N/A"}
+                </div>
+                <div>
+                  <span className="font-medium">Cajero:</span> {order.cashier_name || "N/D"}
                 </div>
               </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="px-6 py-8 text-center">
+          <div className="flex flex-col items-center justify-center text-gray-400">
+            <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-lg font-medium">No hay movimientos registrados</p>
+            <p className="text-sm mt-1">Los movimientos aparecerán aquí una vez que se realicen</p>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+
+  {/* Paginación */}
+  {orders.length > 0 && (
+    <div className="flex items-center justify-between mt-4 px-2">
+      <div className="text-sm text-gray-700">
+        Mostrando <span className="font-medium">{orders.length}</span> resultados
+      </div>
+      <div className="flex space-x-2">
+        <button className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+          Anterior
+        </button>
+        <button className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+          Siguiente
+        </button>
+      </div>
+    </div>
+  )}
+</div>
             </div>
           </div>
         )}

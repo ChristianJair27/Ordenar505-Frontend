@@ -99,7 +99,7 @@ export default function KioskLogin() {
           <img 
             src={logo} 
             alt="La Peña de Santiago Logo" 
-            className="h-80 w-80 mb-3 rounded-lg shadow-lg object-cover" 
+            className="h-64 w-64 mb-3 rounded-lg shadow-lg object-cover" 
           />
           <p className="text-gray-400 mt-1">Sistema de Punto de Venta</p>
         </div>

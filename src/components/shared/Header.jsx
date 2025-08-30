@@ -115,6 +115,17 @@ const Header = () => {
               <span className="absolute top-1 right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-blue-900 animate-pulse"></span>
             </button>
 
+            {/* Botón de Salir Mejorado - Ahora más visible */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg group"
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <IoLogOut className="text-xl group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-sm lg:text-base">Salir</span>
+            </button>
+
             <div className="relative" ref={dropdownRef}>
               <button
                 ref={userButtonRef}

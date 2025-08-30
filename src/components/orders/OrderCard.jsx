@@ -1,9 +1,12 @@
 import PropTypes from "prop-types";
-import { FaCheckDouble, FaUtensils, FaReceipt, FaPrint, FaPlusCircle } from "react-icons/fa";
+import { FaUserEdit , FaCheckDouble, FaUtensils, FaReceipt, FaPrint, FaPlusCircle } from "react-icons/fa";
 import { BsClockHistory, BsCheckCircleFill } from "react-icons/bs";
 import { getAvatarName } from "../../utils/index";
 import { useNavigate } from "react-router-dom";
 import { formatDateAndTime } from "../../utils";
+import { axiosWrapper } from "../../https/axiosWrapper";
+import { enqueueSnackbar } from "notistack";
+import { useState, useEffect } from "react";
 
 const OrderCard = ({
   order,
@@ -11,6 +14,57 @@ const OrderCard = ({
   onInvoiceClick = () => {},
 }) => {
   const navigate = useNavigate();
+
+  const [waiterModalOpen, setWaiterModalOpen] = useState(false);
+  const [waiters, setWaiters] = useState([]);
+  const [selectedWaiter, setSelectedWaiter] = useState(null);
+  const API_URL = import.meta.env.VITE_API_URL;
+
+  
+
+ 
+
+  const loadWaiters = async () => {
+  try {
+    // intenta plural
+    let res = await axiosWrapper.get(`/api/user/users?role=waiter`);
+    let arr = res?.data?.data || res?.data?.users || [];
+    if (!arr.length) {
+      // intenta singular si no vino nada
+      res = await axiosWrapper.get(`/api/user?role=waiter`);
+      arr = res?.data?.data || res?.data?.users || [];
+    }
+    setWaiters(arr);
+  } catch (err) {
+    enqueueSnackbar(`No pude cargar meseros. ${err?.response?.status || ""}`, { variant: "error" });
+  }
+};
+
+  const openChangeWaiter = async () => {
+    setWaiterModalOpen(true);
+    if (!waiters.length) await loadWaiters();
+  };
+
+  const assignWaiter = async () => {
+    if (!selectedWaiter) {
+      enqueueSnackbar("Selecciona un mesero.", { variant: "warning" });
+      return;
+    }
+    try {
+      await axiosWrapper.put(`/api/order/${order.id}/assign-waiter`, {
+        waiter_id: selectedWaiter,
+      });
+      enqueueSnackbar("Mesero actualizado.", { variant: "success" });
+      setWaiterModalOpen(false);
+      const resp = await axiosWrapper.put(`/api/order/${order.id}/assign-waiter`, { waiter_id: selectedWaiter });
+const info = resp?.data?.data;
+if (typeof onWaiterChanged === "function") onWaiterChanged(order.id, info?.waiter_id, info?.waiter_name);
+      if (typeof onWaiterChanged === "function") onWaiterChanged(order.id, selectedWaiter);
+      window.location.reload();
+    } catch (err) {
+      enqueueSnackbar(err?.response?.data?.message || "Error al actualizar mesero.", { variant: "error" });
+    }
+  };
 
   // Verificación segura de propiedades con valores por defecto
   const customerName =
@@ -260,6 +314,17 @@ const OrderCard = ({
             </button>
           )}
 
+          {!isCompleted && !isCanceled && (
+            <button
+              onClick={openChangeWaiter}
+              className="flex items-center bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              title="Reasignar esta orden a otro mesero"
+            >
+              <FaUserEdit className="mr-2" />
+              Cambiar mesero
+            </button>
+          )}
+
           {/* imprimir ticket rápido */}
           <button
             onClick={handleQuickPrint}
@@ -289,6 +354,55 @@ const OrderCard = ({
           )}
         </div>
       </div>
+
+
+      {/* Modal Cambiar Mesero */}
+      {waiterModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold mb-3">Cambiar mesero</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Selecciona el nuevo mesero responsable de esta orden.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Mesero
+              </label>
+              <select
+                className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                value={selectedWaiter || ""}
+                onChange={(e) => setSelectedWaiter(Number(e.target.value))}
+              >
+                <option value="" disabled>Selecciona un mesero</option>
+                {waiters.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name || w.full_name || w.email || `ID ${w.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setWaiterModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={assignWaiter}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
     </div>
   );
 };
@@ -313,9 +427,11 @@ OrderCard.propTypes = {
     order_status: PropTypes.string,
     status: PropTypes.string,
     orderStatus: PropTypes.string,
+    
   }).isRequired,
   isCompleted: PropTypes.bool,
   onInvoiceClick: PropTypes.func,
+  onWaiterChanged: PropTypes.func,
 };
 
 export default OrderCard;

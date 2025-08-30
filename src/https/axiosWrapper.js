@@ -1,12 +1,49 @@
+// src/https/axiosWrapper.js
 import axios from "axios";
-import { removeUser } from "../redux/slices/userSlice";
 import store from "../redux/store";
+import { removeUser } from "../redux/slices/userSlice";
 
-const API_URL = import.meta.env.VITE_BACKEND_URL || "http://192.168.1.78"; // ajusta si quieres
+const API_URL = import.meta.env.VITE_BACKEND_URL || "http://192.168.1.78";
 
+// ---------- helpers de sesión (multi-perfil) ----------
+const ACCESS_PREFIX = "access_token:";       // p.ej. access_token:23
+const CURRENT_UID_KEY = "current_user_id";   // p.ej. "23"
+
+export const setActiveUser = (userId) => {
+  if (userId == null) return;
+  localStorage.setItem(CURRENT_UID_KEY, String(userId));
+};
+
+export const setAccessTokenForUser = (userId, token) => {
+  if (userId == null) return;
+  if (token) localStorage.setItem(`${ACCESS_PREFIX}${userId}`, token);
+  else localStorage.removeItem(`${ACCESS_PREFIX}${userId}`);
+};
+
+export const getActiveUserId = () => localStorage.getItem(CURRENT_UID_KEY);
+
+export const getActiveAccessToken = () => {
+  // 1) intenta por usuario activo
+  const uid = getActiveUserId();
+  if (uid) {
+    const byUser = localStorage.getItem(`${ACCESS_PREFIX}${uid}`);
+    if (byUser) return byUser;
+  }
+  // 2) retro-compat: clave vieja única
+  return localStorage.getItem("access_token") || null;
+};
+
+export const clearAllAccessTokens = () => {
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith(ACCESS_PREFIX) || k === "access_token")
+    .forEach((k) => localStorage.removeItem(k));
+  localStorage.removeItem(CURRENT_UID_KEY);
+};
+
+// ---------- axios instance ----------
 export const axiosWrapper = axios.create({
   baseURL: API_URL,
-  withCredentials: false, // no usas cookies para auth
+  withCredentials: false, // si no usas cookies HttpOnly
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -14,17 +51,17 @@ export const axiosWrapper = axios.create({
   timeout: 20000,
 });
 
-// REQUEST
+// ---------- REQUEST ----------
 axiosWrapper.interceptors.request.use(
   (config) => {
-    const t = localStorage.getItem("access_token"); // 👈 clave única
+    const t = getActiveAccessToken();
     if (t) config.headers.Authorization = `Bearer ${t}`;
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// RESPONSE
+// ---------- RESPONSE ----------
 axiosWrapper.interceptors.response.use(
   (res) => res,
   (error) => {
@@ -33,9 +70,13 @@ axiosWrapper.interceptors.response.use(
     const here = window.location.pathname;
 
     if (status === 401) {
-      store.dispatch(removeUser());
+      try { store.dispatch(removeUser()); } catch {}
+      // solo limpia el token del usuario activo
+      const uid = getActiveUserId();
+      if (uid) localStorage.removeItem(`${ACCESS_PREFIX}${uid}`);
+      // también la clave vieja si existiera
       localStorage.removeItem("access_token");
-      // evita loop si ya estás en /profiles
+
       if (here !== "/profiles") window.location.href = "/profiles";
     }
 

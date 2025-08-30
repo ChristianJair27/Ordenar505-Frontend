@@ -29,6 +29,22 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
 
   const API_URL = import.meta.env.VITE_BACKEND_URL;
 
+
+
+// 🔁 Reload duro con opción de navegar antes
+const hardReload = (path = null) => {
+  if (path) {
+    // navega dentro de la SPA y luego recarga el documento
+    navigate(path, { replace: true });
+    // pequeño delay para dejar que el router cambie de ruta
+    setTimeout(() => window.location.reload(), 50);
+  } else {
+    window.location.reload();
+  }
+};
+
+
+
   // cliente http: prioriza el que exportas en ../../https/index
   const httpClient =
     http.api || http.client || http.axiosInstance || http.default || axios;
@@ -51,6 +67,7 @@ const logoutMutation = useMutation({
     localStorage.removeItem("token");
     dispatch(removeUser());
     navigate("/profiles", { replace: true });
+    setTimeout(() => window.location.reload(), 50);
   },
 });
 
@@ -129,6 +146,7 @@ const logoutMutation = useMutation({
       dispatch(removeAllItems());
 
       logoutMutation.mutate();
+      hardReload("/profiles");
       
     },
     onError: (error) => {
@@ -155,6 +173,7 @@ const logoutMutation = useMutation({
 
       // 👉 ahora SÍ navegamos a /orders para ver la lista actualizada
       navigate("/orders", { replace: true });
+      window.location.reload();
     },
     onError: (error) => {
       console.error(error);

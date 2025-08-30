@@ -37,6 +37,81 @@ const Home = () => {
   const isCashier = ["cajero", "cashier"].includes(role) || role === "admin"; // ✅ admin ve vista cajero
   const isAdmin   = role === "admin";
 
+
+// Usa la misma ruta que OrderCard
+const ORDER_DETAIL_ROUTE = (id) => `/orden/${id}`;
+
+// Intenta extraer el id de orden desde la mesa (tolerante a varios nombres)
+const extractOrderIdFromTable = (t = {}) =>
+  t.current_order_id ??
+  t.order_id ??
+  t.active_order_id ??
+  t.order?.id ??
+  t.order?._id ??
+  t.currentOrderId ??
+  t.activeOrderId ??
+  null;
+
+// Si no viene el id en la mesa, intenta pedirlo al backend
+const fetchActiveOrderIdForTable = async (table) => {
+  const tableId = table?.table_id ?? table?.tableId ?? table?.id ?? table?.table_no ?? null;
+  if (!tableId) return null;
+
+  try {
+    // 1) endpoint directo si lo tienes (ajústalo a tu API real)
+    const r1 = await axiosWrapper.get(`${API_URL}/api/orders/active-by-table/${tableId}`);
+    const id1 = r1?.data?.data?.id ?? r1?.data?.id ?? null;
+    if (id1) return id1;
+  } catch (_) {}
+
+  try {
+    // 2) fallback genérico: buscar por query (ajusta los params al backend)
+    const r2 = await axiosWrapper.get(`${API_URL}/api/orders`, {
+      params: { table_id: tableId, status: 'inprogress', limit: 1, sort: 'desc' }
+    });
+    const arr = r2?.data?.data ?? r2?.data ?? [];
+    const first = Array.isArray(arr) ? arr[0] : null;
+    const id2 = first?.id ?? first?._id ?? null;
+    if (id2) return id2;
+  } catch (_) {}
+
+  return null;
+};
+
+const openTableLikeOrdersCard = async (table) => {
+  // 1) intentar leerlo del objeto mesa
+  let orderId = extractOrderIdFromTable(table);
+
+  // 2) si no viene, intentar pedirlo al backend por mesa
+  if (!orderId) {
+    orderId = await fetchActiveOrderIdForTable(table);
+  }
+
+  if (orderId) {
+    navigate(ORDER_DETAIL_ROUTE(orderId));
+  } else {
+    enqueueSnackbar("No se encontró una orden activa para esta mesa.", { variant: "warning" });
+  }
+};
+
+
+const openTable = (table) => {
+  const orderId = extractOrderId(table);
+
+  if (orderId) {
+    navigate(ORDER_DETAIL_ROUTE(orderId));
+    return;
+  }
+
+  // Fallback opcional: si la mesa está ocupada pero no trae id,
+  // intenta navegar a Orders o muestra un aviso.
+  enqueueSnackbar("No se encontró una orden activa para esta mesa.", { variant: "warning" });
+  navigate('/orders');
+};
+
+
+
+
   // Mesas
   const {
     data: tablesData,
@@ -91,9 +166,10 @@ const Home = () => {
         total_ventas: Number(d.total_ventas ?? 0) || 0,
         total_ordenes: Number(d.total_ordenes ?? 0) || 0,
         hora_inicio: d.hora_inicio ?? null,
+        shift_id: d.shift_id ?? null,
       };
     },
-    enabled: isCashier || isAdmin, // ✅
+    enabled: isCashier || isAdmin || isWaiter,
     retry: 1,
     refetchInterval: 60000
   });
@@ -109,6 +185,24 @@ const Home = () => {
     onSuccess: () => { refetch(); enqueueSnackbar("Turno cerrado con éxito.", { variant: "success" }); },
     onError: (err) => enqueueSnackbar(`Error al cerrar turno: ${err.response?.data?.message || err.message}`, { variant: "error" })
   });
+
+  const {
+  data: waiterShiftStats,
+  isLoading: waiterShiftLoading,
+} = useQuery({
+  queryKey: ["waiterShiftStats", userData?.id, turnoData?.shift_id],
+  queryFn: async () => {
+    if (!(isWaiter || isAdmin) || !userData?.id || !turnoData?.shift_id) {
+      return { orders_count: 0, revenue: 0, kitchen_tips: 0 };
+    }
+    const r = await axiosWrapper.get(`${API_URL}/api/waiter/shift-stats`, {
+      params: { waiter_id: userData.id, shift_id: turnoData.shift_id }
+    });
+    return r?.data?.data ?? { orders_count: 0, revenue: 0, kitchen_tips: 0 };
+  },
+  enabled: (isWaiter || isAdmin) && !!userData?.id && !!turnoData?.shift_id,
+  refetchInterval: 30000,
+});
 
   // Métricas (cajero/admin ven caja; mesero/admin ven personales)
   const getMetrics = () => {
@@ -148,9 +242,13 @@ const Home = () => {
         }
       ];
     } else {
+      const revenueShift = isWaiter ? (waiterShiftStats?.revenue ?? 0) : 0;
+const ordersCountShift = isWaiter ? (waiterShiftStats?.orders_count ?? 0) : 0;
       const revenue = isWaiter ? (waiterStats?.revenue ?? 0) : 0;
       const ordersCount = isWaiter ? (waiterStats?.orders_count ?? 0) : 0;
-      const kitchenTipsValue = isWaiter ? (waiterStatsLoading ? "..." : formatValue((Number(revenue) || 0) * TIPS_PCT)) : formatValue(0);
+      const kitchenTipsValue = isWaiter
+  ? (waiterShiftLoading ? "..." : formatValue((Number(revenueShift) || 0) * TIPS_PCT))
+  : formatValue(0);
       return [
         {
           title: "Órdenes Hoy (yo)",
@@ -292,7 +390,7 @@ const Home = () => {
                 OcupadoTables.map((table) => (
                   <motion.div
                     key={table.id || table._id}
-                    onClick={() => navigate('/orders')}
+                     onClick={() => openTableLikeOrdersCard(table)}
                     className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 bg-orange-50 border-orange-200 hover:bg-orange-100`}
                     variants={itemVariants} whileHover="hover" whileTap="tap"
                   >
