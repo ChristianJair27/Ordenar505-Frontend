@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 14, 165, 233;
+  }
+  
+  /* Estilos de focus - versión corregida */
+  [type="text"]:focus, [type="email"]:focus, [type="url"]:focus,
+  [type="password"]:focus, [type="number"]:focus, [type="date"]:focus,
+  [type="datetime-local"]:focus, [type="month"]:focus, [type="search"]:focus,
+  [type="tel"]:focus, [type="time"]:focus, [type="week"]:focus,
+  [multiple]:focus, textarea:focus, select:focus {
+    @apply ring-2 ring-primary-500/50 border-primary-500 outline-none;
+  }
+}
+
+@layer components {
+  /* FullScreenLoader component */
+  .fullscreen-loader {
+    @apply fixed inset-0 w-full h-full bg-gray-100/90 flex justify-center items-center z-[9999];
+    backdrop-filter: blur(2px);
+  }
+  
+  .spinner {
+    @apply border-4 border-gray-200 rounded-full w-12 h-12;
+    border-top-color: theme('colors.primary.500');
+    animation: spin 1s linear infinite;
+  }
+  
+  /* Botón primario */
+  .btn-primary {
+    @apply px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Utilidades personalizadas */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+    font-size: 12px; /* tamaño reducido para tickets */
+  }
+
+  .receipt-container {
+    width: 58mm; /* ajusta a 58mm si tu rollo es más chico */
+    max-width: 58mm;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th, td {
+    font-size: 11px;
+    padding: 2px;
+    text-align: left;
+  }
+
+  /* Ocultar botones y fondos */
+  button, .no-print, .shadow-lg, .bg-gradient-to-r {
+    display: none !important;
+  }
+}
