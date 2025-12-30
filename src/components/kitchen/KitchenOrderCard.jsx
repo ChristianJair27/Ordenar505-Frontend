@@ -11,14 +11,7 @@ function formatAgo(ms) {
   const hours = Math.floor(totalMin / 60);
   const min = totalMin % 60;
 
-<<<<<<< HEAD
-  // < 1 hora: "39m 12s"
   if (hours <= 0) return `${min}m ${sec}s`;
-
-  // >= 1 hora: "1h 03m"
-=======
-  if (hours <= 0) return `${min}m ${sec}s`;
->>>>>>> b6fdd57 (Update Menu Page + notes)
   return `${hours}h ${String(min).padStart(2, "0")}m`;
 }
 
@@ -27,10 +20,7 @@ function formatShortId(id) {
 }
 
 function getUrgency(ageMs) {
-<<<<<<< HEAD
   // 🔴 15+ min
-=======
->>>>>>> b6fdd57 (Update Menu Page + notes)
   if (ageMs >= MIN15) {
     return {
       label: "15+ min",
@@ -41,10 +31,7 @@ function getUrgency(ageMs) {
     };
   }
 
-<<<<<<< HEAD
   // 🟡 10–15 min
-=======
->>>>>>> b6fdd57 (Update Menu Page + notes)
   if (ageMs >= MIN10) {
     return {
       label: "10+ min",
@@ -55,10 +42,7 @@ function getUrgency(ageMs) {
     };
   }
 
-<<<<<<< HEAD
   // 🟢 < 10 min
-=======
->>>>>>> b6fdd57 (Update Menu Page + notes)
   return {
     label: "OK",
     badge: "bg-emerald-500 text-black",
@@ -69,22 +53,20 @@ function getUrgency(ageMs) {
 }
 
 export default function KitchenOrderCard({ order, now }) {
-  const created = order.__created ? new Date(order.__created) : new Date();
-  const ageMs = order.__ageMs ?? (now - created.getTime());
+  const created = order?.__created ? new Date(order.__created) : new Date();
+  const ageMs = order?.__ageMs ?? (now - created.getTime());
 
   const tableNo = String(
     order?.table_no || order?.table?.table_no || order?.table_id || "N/A"
   );
 
   const urgency = getUrgency(ageMs);
-<<<<<<< HEAD
 
   // Flash SOLO cuando acaba de llegar (lo marca Kitchen.jsx)
-=======
->>>>>>> b6fdd57 (Update Menu Page + notes)
-  const isNewFlash = !!order.__isNew;
+  const isNewFlash = !!order?.__isNew;
 
-  const items = order.__items || order.items || [];
+  // items pueden venir como order.__items o order.items
+  const items = order?.__items || order?.items || [];
 
   return (
     <div
@@ -103,17 +85,10 @@ export default function KitchenOrderCard({ order, now }) {
           </div>
 
           <div className="text-sm text-white/80 mt-1">
-            Hace{" "}
-<<<<<<< HEAD
-            <span className="font-bold text-white">
-              {formatAgo(ageMs)}
-            </span>
-=======
-            <span className="font-bold text-white">{formatAgo(ageMs)}</span>
->>>>>>> b6fdd57 (Update Menu Page + notes)
+            Hace <span className="font-bold text-white">{formatAgo(ageMs)}</span>
           </div>
 
-          {order.__isNew && (
+          {order?.__isNew && (
             <div className="mt-2 inline-flex items-center gap-2 text-sm px-3 py-1 rounded-full bg-black/30 text-white">
               <span className="inline-block w-3 h-3 rounded-full bg-emerald-400" />
               NUEVA ORDEN
@@ -131,16 +106,6 @@ export default function KitchenOrderCard({ order, now }) {
         </div>
       </div>
 
-<<<<<<< HEAD
-      <div className="mt-4 space-y-2">
-        {items.map((it, idx) => {
-          const name = it?.item_name || it?.name || "Platillo";
-          const qty = Number(it?.quantity || 1);
-          return (
-            <div key={idx} className="text-lg font-semibold">
-              <span className="text-white/70 mr-2">x{qty}</span>
-              <span className="text-white">{name}</span>
-=======
       {/* ✅ Items + notas por item */}
       <div className="mt-4 space-y-3">
         {items.map((it, idx) => {
@@ -164,22 +129,15 @@ export default function KitchenOrderCard({ order, now }) {
                   <span className="text-white/85">{notes}</span>
                 </div>
               )}
->>>>>>> b6fdd57 (Update Menu Page + notes)
             </div>
           );
         })}
       </div>
 
-<<<<<<< HEAD
-      {(order?.notes || order?.observations) && (
-        <div className="mt-4 text-base text-white/90 border-t border-white/30 pt-3">
-          <span className="font-semibold">Nota: </span>
-=======
       {/* Nota a nivel orden (si algún día la usas) */}
       {(order?.notes || order?.observations) && (
         <div className="mt-4 text-base text-white/90 border-t border-white/30 pt-3">
           <span className="font-semibold">Nota general: </span>
->>>>>>> b6fdd57 (Update Menu Page + notes)
           {order?.notes || order?.observations}
         </div>
       )}
@@ -190,8 +148,4 @@ export default function KitchenOrderCard({ order, now }) {
 KitchenOrderCard.propTypes = {
   order: PropTypes.object.isRequired,
   now: PropTypes.number.isRequired,
-<<<<<<< HEAD
 };
-=======
-};
->>>>>>> b6fdd57 (Update Menu Page + notes)

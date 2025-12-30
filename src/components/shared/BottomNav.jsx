@@ -1,33 +1,28 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FaHome, FaUtensils, FaUsers, FaPlus, FaMinus, FaPhone } from "react-icons/fa"; // Añadimos FaUsers, FaPlus, FaMinus
-import { MdOutlineReceiptLong, MdTableRestaurant } from "react-icons/md";
-import { IoMdMore } from "react-icons/io";
+import { FaHome, FaUtensils, FaUsers, FaPlus, FaMinus, FaPhone } from "react-icons/fa";
+import { MdOutlineReceiptLong } from "react-icons/md";
 import { useNavigate, useLocation } from "react-router-dom";
-import Modal from "./Modal"; // Asegúrate de que esta ruta sea correcta
+import Modal from "./Modal";
 import { useDispatch } from "react-redux";
-import { setCustomer } from "../../redux/slices/customerSlice"; // Asegúrate de que esta ruta sea correcta
-import { enqueueSnackbar } from "notistack"; // Para alertas más bonitas
-
+import { setCustomer } from "../../redux/slices/customerSlice";
+import { enqueueSnackbar } from "notistack";
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [guestCount, setGuestCount] = useState(1);
-  const [customerName, setCustomerName] = useState(""); // Cambiado de 'name' a 'customerName' para mayor claridad
-  const [customerPhone, setCustomerPhone] = useState(""); // Cambiado de 'phone' a 'customerPhone'
-  
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+
   const modalRef = useRef(null);
 
-<<<<<<< HEAD
-=======
-
-const HIDE_ON = ["/menu"]; // add "/tables" if you want
+  // ✅ Ocultar BottomNav en estas rutas
+  const HIDE_ON = ["/menu"]; // agrega "/tables" si también quieres ocultarlo ahí
   if (HIDE_ON.includes(location.pathname)) return null;
 
-
->>>>>>> b6fdd57 (Update Menu Page + notes)
   // Cerrar modal al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -36,21 +31,17 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
       }
     };
 
-    if (isModalOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    if (isModalOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isModalOpen]);
 
   const openModal = () => {
-    // Resetear estados del modal cada vez que se abre
     setGuestCount(1);
     setCustomerName("");
     setCustomerPhone("");
     setIsModalOpen(true);
   };
+
   const closeModal = () => setIsModalOpen(false);
 
   const incrementGuest = () => {
@@ -69,14 +60,12 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
     setGuestCount((prev) => prev - 1);
   };
 
-  // Función para determinar si un path está activo o si es una sub-ruta (ej. /menu dentro de /tables)
+  // Activo por ruta
   const isActive = (path) => {
-    if (path === "/") return location.pathname === "/"; // Match exacto para inicio
+    if (path === "/") return location.pathname === "/";
     if (path === "/tables") return location.pathname.startsWith("/tables") || location.pathname.startsWith("/menu");
-    // Puedes añadir más lógica si /orders tiene sub-rutas como /orders/:id
     return location.pathname.startsWith(path);
   };
-
 
   const handleCreateOrder = () => {
     if (!customerName.trim()) {
@@ -84,8 +73,10 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
       return;
     }
 
+    // ✅ OJO: tu slice puede esperar {name, phone, guests}. Si ya lo cambiaste a customerName/customerPhone, ok.
     dispatch(setCustomer({ customerName, customerPhone, guests: guestCount }));
-    navigate("/tables"); // Navegar a la pantalla de selección de mesas
+
+    navigate("/tables");
     closeModal();
     enqueueSnackbar("¡Cliente y comensales configurados! Selecciona una mesa.", { variant: "success" });
   };
@@ -93,14 +84,12 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
   const navItems = [
     { path: "/", icon: <FaHome />, label: "Inicio" },
     { path: "/orders", icon: <MdOutlineReceiptLong />, label: "Órdenes" },
-    //{ path: "/tables", icon: <MdTableRestaurant />, label: "Mesas" },
-    //{ path: "/more", icon: <IoMdMore />, label: "Más" }, // Considera cambiar "/more" por algo más específico si sabes lo que irá ahí
   ];
 
   return (
     <>
       {/* Barra de navegación inferior */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-2xl border-t border-gray-100 h-20 flex justify-around items-center px-4 z-40 md:h-24"> {/* Altura ajustada para mayor espacio, sombra y borde más prominentes */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white shadow-2xl border-t border-gray-100 h-20 flex justify-around items-center px-4 z-40 md:h-24">
         {navItems.map((item) => {
           const active = isActive(item.path);
           return (
@@ -108,42 +97,52 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
               key={item.path}
               onClick={() => navigate(item.path)}
               className={`flex flex-col items-center justify-center p-2 pt-3 rounded-xl transition-all duration-300 ease-in-out flex-1 mx-1 md:mx-2 group
-                ${active
-                  ? "text-blue-600 bg-blue-50 shadow-md transform scale-105" // Estilos más distintivos para activo
-                  : "text-gray-500 hover:text-blue-500 hover:bg-gray-100" // Hover más sutil
+                ${
+                  active
+                    ? "text-blue-600 bg-blue-50 shadow-md transform scale-105"
+                    : "text-gray-500 hover:text-blue-500 hover:bg-gray-100"
                 }`}
               aria-current={active ? "page" : undefined}
             >
-              <span className={`text-2xl md:text-3xl ${active ? "text-blue-600" : "text-gray-500 group-hover:text-blue-500"} transition-colors duration-300`}>{item.icon}</span>
-              <span className={`text-xs md:text-sm mt-1 font-medium ${active ? "text-blue-700 font-semibold" : "text-gray-600 group-hover:text-blue-600"} transition-colors duration-300`}>{item.label}</span>
+              <span
+                className={`text-2xl md:text-3xl ${
+                  active ? "text-blue-600" : "text-gray-500 group-hover:text-blue-500"
+                } transition-colors duration-300`}
+              >
+                {item.icon}
+              </span>
+              <span
+                className={`text-xs md:text-sm mt-1 font-medium ${
+                  active ? "text-blue-700 font-semibold" : "text-gray-600 group-hover:text-blue-600"
+                } transition-colors duration-300`}
+              >
+                {item.label}
+              </span>
             </button>
           );
         })}
 
-        {/* Botón flotante para nueva orden - Centrado entre los items */}
-        {/* Usamos absolute positioning para que flote encima de la barra */}
+        {/* Botón flotante */}
         <button
-          disabled={isActive("/tables") || isActive("/menu")} // Deshabilitar si ya estamos en selección de mesa o menú
-         onClick={() => navigate("/tables")}
+          disabled={isActive("/tables") || isActive("/menu")}
+          onClick={() => navigate("/tables")}
           className={`absolute -top-7 left-1/2 transform -translate-x-1/2 w-16 h-16 rounded-full flex items-center justify-center 
-                      bg-gradient-to-br from-green-500 to-green-700 text-white text-3xl shadow-xl 
-                      hover:scale-110 hover:shadow-2xl active:scale-95 transition-all duration-300 ease-in-out
-                      ${(isActive("/tables") || isActive("/menu")) && "opacity-60 cursor-not-allowed pointer-events-none grayscale" // Estilos deshabilitados más claros
-                      }`}
+            bg-gradient-to-br from-green-500 to-green-700 text-white text-3xl shadow-xl 
+            hover:scale-110 hover:shadow-2xl active:scale-95 transition-all duration-300 ease-in-out
+            ${(isActive("/tables") || isActive("/menu")) && "opacity-60 cursor-not-allowed pointer-events-none grayscale"}`}
           aria-label="Crear nueva orden"
           title="Crear Nueva Orden"
         >
-          <FaUtensils size={28} /> {/* Ícono más grande */}
+          <FaUtensils size={28} />
         </button>
       </nav>
 
-      {/* Modal para nueva orden - Mejorado */}
+      {/* Modal */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title="Nueva Orden" innerRef={modalRef}>
-        <div className="space-y-6 p-4"> {/* Añadido padding y más espacio entre elementos */}
-          {/* Campo Nombre del Cliente */}
+        <div className="space-y-6 p-4">
           <div>
             <label htmlFor="customerName" className="block text-gray-800 text-base font-semibold mb-2">
-              <FaUsers className="inline-block mr-2 text-blue-500" /> {/* Ícono para nombre de cliente */}
+              <FaUsers className="inline-block mr-2 text-blue-500" />
               Nombre del Cliente <span className="text-red-500">*</span>
             </label>
             <input
@@ -154,14 +153,13 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
               placeholder="Ej. Juan Pérez"
               className="w-full px-5 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-800 placeholder-gray-400 text-lg shadow-sm transition-all"
               required
-              autoFocus // Enfocar este campo al abrir el modal
+              autoFocus
             />
           </div>
 
-          {/* Campo Teléfono */}
           <div>
             <label htmlFor="customerPhone" className="block text-gray-800 text-base font-semibold mb-2">
-              <FaPhone className="inline-block mr-2 text-blue-500" /> {/* Ícono para teléfono */}
+              <FaPhone className="inline-block mr-2 text-blue-500" />
               Teléfono (Opcional)
             </label>
             <input
@@ -174,10 +172,9 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
             />
           </div>
 
-          {/* Selector de Comensales */}
           <div>
             <label className="block text-gray-800 text-base font-semibold mb-2">
-              <FaUsers className="inline-block mr-2 text-blue-500" /> {/* Ícono para comensales */}
+              <FaUsers className="inline-block mr-2 text-blue-500" />
               Número de Comensales
             </label>
             <div className="flex items-center justify-between bg-blue-50 px-5 py-3 rounded-lg border border-blue-200 shadow-sm">
@@ -203,7 +200,6 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
             </div>
           </div>
 
-          {/* Botón Crear Orden */}
           <button
             onClick={handleCreateOrder}
             className="w-full bg-blue-600 text-white rounded-lg py-4 mt-6 hover:bg-blue-700 transition-all duration-300 font-bold text-lg shadow-lg hover:shadow-xl active:scale-98 flex items-center justify-center"
@@ -213,11 +209,6 @@ const HIDE_ON = ["/menu"]; // add "/tables" if you want
           </button>
         </div>
       </Modal>
-
-      {/* Importar FaPhone para el campo de teléfono en el modal */}
-      {/* Esto es solo para que el ícono esté disponible. Normalmente, se importaría al principio con los demás. */}
-      {/* <FaPhone /> */} 
-      {/* Nota: Asegúrate de importar FaPhone en la parte superior junto a los otros íconos */}
     </>
   );
 };
