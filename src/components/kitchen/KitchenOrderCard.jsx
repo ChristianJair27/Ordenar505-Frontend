@@ -11,10 +11,14 @@ function formatAgo(ms) {
   const hours = Math.floor(totalMin / 60);
   const min = totalMin % 60;
 
+<<<<<<< HEAD
   // < 1 hora: "39m 12s"
   if (hours <= 0) return `${min}m ${sec}s`;
 
   // >= 1 hora: "1h 03m"
+=======
+  if (hours <= 0) return `${min}m ${sec}s`;
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   return `${hours}h ${String(min).padStart(2, "0")}m`;
 }
 
@@ -23,7 +27,10 @@ function formatShortId(id) {
 }
 
 function getUrgency(ageMs) {
+<<<<<<< HEAD
   // 🔴 15+ min
+=======
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   if (ageMs >= MIN15) {
     return {
       label: "15+ min",
@@ -34,7 +41,10 @@ function getUrgency(ageMs) {
     };
   }
 
+<<<<<<< HEAD
   // 🟡 10–15 min
+=======
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   if (ageMs >= MIN10) {
     return {
       label: "10+ min",
@@ -45,7 +55,10 @@ function getUrgency(ageMs) {
     };
   }
 
+<<<<<<< HEAD
   // 🟢 < 10 min
+=======
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   return {
     label: "OK",
     badge: "bg-emerald-500 text-black",
@@ -64,8 +77,11 @@ export default function KitchenOrderCard({ order, now }) {
   );
 
   const urgency = getUrgency(ageMs);
+<<<<<<< HEAD
 
   // Flash SOLO cuando acaba de llegar (lo marca Kitchen.jsx)
+=======
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   const isNewFlash = !!order.__isNew;
 
   const items = order.__items || order.items || [];
@@ -88,9 +104,13 @@ export default function KitchenOrderCard({ order, now }) {
 
           <div className="text-sm text-white/80 mt-1">
             Hace{" "}
+<<<<<<< HEAD
             <span className="font-bold text-white">
               {formatAgo(ageMs)}
             </span>
+=======
+            <span className="font-bold text-white">{formatAgo(ageMs)}</span>
+>>>>>>> b6fdd57 (Update Menu Page + notes)
           </div>
 
           {order.__isNew && (
@@ -111,6 +131,7 @@ export default function KitchenOrderCard({ order, now }) {
         </div>
       </div>
 
+<<<<<<< HEAD
       <div className="mt-4 space-y-2">
         {items.map((it, idx) => {
           const name = it?.item_name || it?.name || "Platillo";
@@ -119,14 +140,46 @@ export default function KitchenOrderCard({ order, now }) {
             <div key={idx} className="text-lg font-semibold">
               <span className="text-white/70 mr-2">x{qty}</span>
               <span className="text-white">{name}</span>
+=======
+      {/* ✅ Items + notas por item */}
+      <div className="mt-4 space-y-3">
+        {items.map((it, idx) => {
+          const name = it?.item_name || it?.name || "Platillo";
+          const qty = Number(it?.quantity || 1);
+          const notes = String(it?.notes || "").trim();
+
+          return (
+            <div
+              key={it?.id ?? `${name}-${idx}`}
+              className="rounded-xl bg-black/20 border border-white/10 p-3"
+            >
+              <div className="text-lg font-semibold">
+                <span className="text-white/70 mr-2">x{qty}</span>
+                <span className="text-white">{name}</span>
+              </div>
+
+              {notes && (
+                <div className="mt-2 text-sm">
+                  <span className="font-semibold text-emerald-200">Notas: </span>
+                  <span className="text-white/85">{notes}</span>
+                </div>
+              )}
+>>>>>>> b6fdd57 (Update Menu Page + notes)
             </div>
           );
         })}
       </div>
 
+<<<<<<< HEAD
       {(order?.notes || order?.observations) && (
         <div className="mt-4 text-base text-white/90 border-t border-white/30 pt-3">
           <span className="font-semibold">Nota: </span>
+=======
+      {/* Nota a nivel orden (si algún día la usas) */}
+      {(order?.notes || order?.observations) && (
+        <div className="mt-4 text-base text-white/90 border-t border-white/30 pt-3">
+          <span className="font-semibold">Nota general: </span>
+>>>>>>> b6fdd57 (Update Menu Page + notes)
           {order?.notes || order?.observations}
         </div>
       )}
@@ -137,4 +190,8 @@ export default function KitchenOrderCard({ order, now }) {
 KitchenOrderCard.propTypes = {
   order: PropTypes.object.isRequired,
   now: PropTypes.number.isRequired,
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> b6fdd57 (Update Menu Page + notes)

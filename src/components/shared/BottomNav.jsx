@@ -20,6 +20,14 @@ const BottomNav = () => {
   
   const modalRef = useRef(null);
 
+<<<<<<< HEAD
+=======
+
+const HIDE_ON = ["/menu"]; // add "/tables" if you want
+  if (HIDE_ON.includes(location.pathname)) return null;
+
+
+>>>>>>> b6fdd57 (Update Menu Page + notes)
   // Cerrar modal al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event) => {
