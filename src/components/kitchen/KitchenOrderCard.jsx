@@ -20,35 +20,29 @@ function formatShortId(id) {
 }
 
 function getUrgency(ageMs) {
-  // 🔴 15+ min
+  // 🔴 > 15 min – Urgente
   if (ageMs >= MIN15) {
     return {
-      label: "15+ min",
-      badge: "bg-red-600 text-white",
-      card:
-        "bg-red-600/25 border border-red-500 " +
-        "shadow-[0_0_40px_rgba(239,68,68,0.35)]",
+      label: "URGENTE",
+      badge: "bg-red-600/90 text-white text-base font-semibold",
+      card: "bg-gradient-to-br from-red-950/60 to-red-900/30 border border-red-700/60",
     };
   }
 
-  // 🟡 10–15 min
+  // 🟡 10–15 min – Atención
   if (ageMs >= MIN10) {
     return {
-      label: "10+ min",
-      badge: "bg-yellow-400 text-black",
-      card:
-        "bg-yellow-400/22 border border-yellow-300 " +
-        "shadow-[0_0_28px_rgba(250,204,21,0.22)]",
+      label: "ATENCIÓN",
+      badge: "bg-amber-600/85 text-white text-base font-semibold",
+      card: "bg-gradient-to-br from-amber-950/50 to-amber-900/25 border border-amber-700/50",
     };
   }
 
-  // 🟢 < 10 min
+  // 🟢 Normal
   return {
-    label: "OK",
-    badge: "bg-emerald-500 text-black",
-    card:
-      "bg-emerald-500/20 border border-emerald-400 " +
-      "shadow-[0_0_25px_rgba(16,185,129,0.25)]",
+    label: "En curso",
+    badge: "bg-emerald-600/80 text-white text-sm font-medium",
+    card: "bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700/60",
   };
 }
 
@@ -61,53 +55,49 @@ export default function KitchenOrderCard({ order, now }) {
   );
 
   const urgency = getUrgency(ageMs);
-
-  // Flash SOLO cuando acaba de llegar (lo marca Kitchen.jsx)
   const isNewFlash = !!order?.__isNew;
 
-  // items pueden venir como order.__items o order.items
   const items = order?.__items || order?.items || [];
 
   return (
     <div
       className={[
-        "rounded-2xl p-5 transition-all",
+        "rounded-2xl p-6 transition-all duration-300",
         urgency.card,
+        "backdrop-blur-sm",
         isNewFlash ? "animate-pulse" : "",
       ].join(" ")}
     >
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xl font-extrabold tracking-wide">
+          <div className="text-2xl font-bold tracking-tight text-white">
             Mesa <span className="text-white">{tableNo}</span>
-            <span className="text-white/50 font-semibold"> • </span>
-            <span className="text-white/90">#{formatShortId(order?.id)}</span>
+            <span className="text-white/40 mx-2">•</span>
+            <span className="text-white/80 font-medium">#{formatShortId(order?.id)}</span>
           </div>
 
-          <div className="text-sm text-white/80 mt-1">
-            Hace <span className="font-bold text-white">{formatAgo(ageMs)}</span>
+          <div className="mt-1.5 text-base text-gray-300">
+            Hace <span className="font-semibold text-white">{formatAgo(ageMs)}</span>
           </div>
 
+          {/* Nueva orden */}
           {order?.__isNew && (
-            <div className="mt-2 inline-flex items-center gap-2 text-sm px-3 py-1 rounded-full bg-black/30 text-white">
-              <span className="inline-block w-3 h-3 rounded-full bg-emerald-400" />
-              NUEVA ORDEN
+            <div className="mt-2.5 inline-flex items-center gap-2 text-sm font-medium px-3 py-1 rounded-full bg-emerald-700/40 text-emerald-200 border border-emerald-600/30">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              Nueva orden
             </div>
           )}
         </div>
 
-        <div
-          className={[
-            "text-sm font-bold px-3 py-1 rounded-full whitespace-nowrap",
-            urgency.badge,
-          ].join(" ")}
-        >
+        {/* Badge de estado */}
+        <div className={`px-4 py-1.5 rounded-xl ${urgency.badge}`}>
           {urgency.label}
         </div>
       </div>
 
-      {/* ✅ Items + notas por item */}
-      <div className="mt-4 space-y-3">
+      {/* Items */}
+      <div className="mt-5 space-y-3">
         {items.map((it, idx) => {
           const name = it?.item_name || it?.name || "Platillo";
           const qty = Number(it?.quantity || 1);
@@ -116,17 +106,17 @@ export default function KitchenOrderCard({ order, now }) {
           return (
             <div
               key={it?.id ?? `${name}-${idx}`}
-              className="rounded-xl bg-black/20 border border-white/10 p-3"
+              className="rounded-xl bg-black/25 border border-white/10 p-4"
             >
-              <div className="text-lg font-semibold">
-                <span className="text-white/70 mr-2">x{qty}</span>
-                <span className="text-white">{name}</span>
+              <div className="text-lg font-medium text-white">
+                <span className="text-gray-400 mr-2.5">x{qty}</span>
+                {name}
               </div>
 
               {notes && (
-                <div className="mt-2 text-sm">
-                  <span className="font-semibold text-emerald-200">Notas: </span>
-                  <span className="text-white/85">{notes}</span>
+                <div className="mt-2 text-sm text-gray-300">
+                  <span className="font-medium text-emerald-300/90">Notas: </span>
+                  {notes}
                 </div>
               )}
             </div>
@@ -134,10 +124,10 @@ export default function KitchenOrderCard({ order, now }) {
         })}
       </div>
 
-      {/* Nota a nivel orden (si algún día la usas) */}
+      {/* Nota general */}
       {(order?.notes || order?.observations) && (
-        <div className="mt-4 text-base text-white/90 border-t border-white/30 pt-3">
-          <span className="font-semibold">Nota general: </span>
+        <div className="mt-5 pt-4 border-t border-white/10 text-base text-gray-200">
+          <span className="font-medium text-amber-300/90">Nota: </span>
           {order?.notes || order?.observations}
         </div>
       )}
