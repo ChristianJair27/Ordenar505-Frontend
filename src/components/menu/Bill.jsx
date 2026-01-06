@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { getTotalPrice, removeAllItems, importItems } from "../../redux/slices/cartSlice";
+import { getTotalPrice, removeAllItems } from "../../redux/slices/cartSlice";
 import { addOrder } from "../../https/index";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
@@ -10,8 +10,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { setUser } from "../../redux/slices/userSlice";
 import { removeUser } from "../../redux/slices/userSlice";
-import { logout } from "../../https/index"; // si ya lo exportas
-// intenta usar tu cliente centralizado si existe
+import { logout } from "../../https/index";
 import * as http from "../../https/index";
 
 const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false }) => {
@@ -27,59 +26,13 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
   const [showInvoice, setShowInvoice] = useState(false);
   const [orderInfo, setOrderInfo] = useState(null);
 
+  // Estado para bloquear el botón mientras se procesa
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const API_URL = import.meta.env.VITE_BACKEND_URL;
 
+  const httpClient = http.api || http.client || http.axiosInstance || http.default || axios;
 
-
-// 🔁 Reload duro con opción de navegar antes
-const hardReload = (path = null) => {
-  if (path) {
-    // navega dentro de la SPA y luego recarga el documento
-    navigate(path, { replace: true });
-    // pequeño delay para dejar que el router cambie de ruta
-    setTimeout(() => window.location.reload(), 50);
-  } else {
-    window.location.reload();
-  }
-};
-
-
-
-  // cliente http: prioriza el que exportas en ../../https/index
-  const httpClient =
-    http.api || http.client || http.axiosInstance || http.default || axios;
-
-
-// ✅ Logout reutilizando tu flujo ya probado
-const logoutMutation = useMutation({
-  mutationFn: () => logout(), // si no tienes endpoint real, puedes dejarla vacía: () => Promise.resolve()
-  onSettled: () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("token");
-    dispatch(removeUser());
-    // redirige a tu pantalla de perfiles/login
-    navigate("/profiles", { replace: true });
-  },
-  onError: (error) => {
-    console.error("Logout error:", error);
-    // Aun con error del backend, hacemos logout local
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("token");
-    dispatch(removeUser());
-    navigate("/profiles", { replace: true });
-    setTimeout(() => window.location.reload(), 50);
-  },
-});
-
-
-
-  // --------- helpers (rehidratación & rutas plural/singular) ---------
-
-
-
-
-
-  
   const fetchOrderById = async (id) => {
     try {
       const r = await httpClient.get(`${API_URL}/api/orders/${id}`);
@@ -100,14 +53,13 @@ const logoutMutation = useMutation({
       id: it.item_id ?? it.id ?? it._id ?? `${it.name}-${Number(it.price ?? it.total ?? 0)}`,
       name: it.item_name ?? it.name ?? "Artículo",
       quantity: Number(it.quantity ?? 1),
-      price: Number(it.price ?? it.total ?? 0), // total por renglón desde DB
+      price: Number(it.price ?? it.total ?? 0),
       notes: it.notes ?? "",
-      __existing: true, // <- marca que viene de la orden
+      __existing: true,
     }));
   };
 
   const appendItems = async ({ orderId, items }) => {
-    // intenta PUT plural y luego singular
     try {
       return await httpClient.put(`${API_URL}/api/orders/${orderId}`, { op: "appendItems", items });
     } catch (e) {
@@ -116,9 +68,8 @@ const logoutMutation = useMutation({
     return httpClient.put(`${API_URL}/api/order/${orderId}`, { op: "appendItems", items });
   };
 
-  // ========= MUTACIÓN: CREAR ORDEN (POST /api/order) =========
   const createOrderMutation = useMutation({
-    mutationFn: (reqData) => addOrder(reqData), // ya usa tu cliente
+    mutationFn: (reqData) => addOrder(reqData),
     onSuccess: (res) => {
       const newOrderId = res?.data?.data?.orderId;
 
@@ -141,13 +92,12 @@ const logoutMutation = useMutation({
       setOrderInfo(normalized);
       enqueueSnackbar("¡Orden registrada correctamente!", { variant: "success" });
 
-      // limpieza local
       dispatch(removeCustomer());
       dispatch(removeAllItems());
 
-      logoutMutation.mutate();
-      hardReload("/profiles");
-      
+      logout();
+      navigate("/profiles", { replace: true });
+      setTimeout(() => window.location.reload(), 100);
     },
     onError: (error) => {
       console.error(error);
@@ -155,14 +105,12 @@ const logoutMutation = useMutation({
     },
   });
 
-  // ========= MUTACIÓN: APENDIZAR ARTÍCULOS =========
   const appendItemsMutation = useMutation({
     mutationFn: ({ orderId, items }) => appendItems({ orderId, items }),
     onSuccess: async () => {
       enqueueSnackbar("¡Artículos agregados a la orden!", { variant: "success" });
 
       try {
-        // rehidrata para tener el carrito sincronizado (opcional)
         const fullOrder = await fetchOrderById(orderId);
         const normalized = normalizeItemsFromOrder(fullOrder);
         dispatch(removeAllItems());
@@ -171,7 +119,6 @@ const logoutMutation = useMutation({
         console.error("No se pudo rehidratar la orden después de agregar:", e);
       }
 
-      // 👉 ahora SÍ navegamos a /orders para ver la lista actualizada
       navigate("/orders", { replace: true });
       window.location.reload();
     },
@@ -186,71 +133,79 @@ const logoutMutation = useMutation({
     },
   });
 
-  // ========= HANDLER =========
   const handlePlaceOrder = async () => {
-    // --- APPEND: enviar SOLO los nuevos ---
-    if (mode === "append" && orderId) {
-      const newItems = cartData.filter((it) => !it.__existing);
-      if (newItems.length === 0) {
-        enqueueSnackbar("No hay artículos nuevos para agregar.", { variant: "info" });
+    if (isSubmitting) return; // Evita múltiples clics
+
+    setIsSubmitting(true);
+
+    try {
+      if (mode === "append" && orderId) {
+        const newItems = cartData.filter((it) => !it.__existing);
+        if (newItems.length === 0) {
+          enqueueSnackbar("No hay artículos nuevos para agregar.", { variant: "info" });
+          setIsSubmitting(false);
+          return;
+        }
+        const itemsPayload = newItems.map((it) => ({
+          id: it.id,
+          name: it.name,
+          quantity: Number(it.quantity ?? 1),
+          price: Number(it.price ?? 0),
+          notes: it.notes ?? "",
+        }));
+
+        appendItemsMutation.mutate({ orderId, items: itemsPayload });
         return;
       }
-      const itemsPayload = newItems.map((it) => ({
-        id: it.id,
-        name: it.name,
-        quantity: Number(it.quantity ?? 1),
-        price: Number(it.price ?? 0), // total por renglón
-        notes: it.notes ?? "",
-      }));
 
-      appendItemsMutation.mutate({ orderId, items: itemsPayload });
-      return;
+      const raw = customerData?.table;
+      const tableIdFromStore =
+        typeof raw === "object" ? (raw?.tableId ?? raw?.id) : raw;
+
+      const tableId = parseInt(
+        (lockTableSelection && lockedTable != null) ? lockedTable : tableIdFromStore,
+        10
+      );
+
+      if (!tableId || Number.isNaN(tableId)) {
+        enqueueSnackbar("No se ha seleccionado una mesa.", { variant: "error" });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const orderData = {
+        user_id: user?.id ?? user?._id ?? null,
+        name: user?.name ?? user?.full_name ?? "Usuario",
+        created_by_id: user?.id ?? user?._id ?? null,
+        created_by_name: user?.name ?? user?.full_name ?? "Usuario",
+
+        createdBy: {
+          id: user?.id ?? user?._id ?? null,
+          name: user?.name ?? user?.full_name ?? user?.username ?? "Usuario",
+          role: user?.role ?? "user",
+        },
+        customerDetails: {
+          name: user?.name ?? "Usuario",
+          phone: "N/A",
+          guests: customerData?.guests || 1,
+        },
+        orderStatus: "In Progress",
+        bills: {
+          total: total,
+          tax: 0,
+          totalWithTax: total,
+        },
+        items: cartData,
+        table: tableId,
+        paymentMethod: paymentMethod || "Pending",
+      };
+
+      createOrderMutation.mutate(orderData);
+    } catch (err) {
+      console.error("Error inesperado:", err);
+      enqueueSnackbar("Error inesperado al procesar la orden", { variant: "error" });
+      setIsSubmitting(false);
     }
-
-    // --- CREAR ORDEN ---
-    const raw = customerData?.table;
-    const tableIdFromStore =
-      typeof raw === "object" ? (raw?.tableId ?? raw?.id) : raw;
-
-    const tableId = parseInt(
-      (lockTableSelection && lockedTable != null) ? lockedTable : tableIdFromStore,
-      10
-    );
-
-    if (!tableId || Number.isNaN(tableId)) {
-      enqueueSnackbar("No se ha seleccionado una mesa.", { variant: "error" });
-      return;
-    }
-
-    const orderData = {
-  // 👇 guarda al MESERO/creador de la orden
-  user_id: user?.id ?? user?._id ?? null,           // <- ID del mesero
-  name: user?.name ?? user?.full_name ?? "Usuario", // <- nombre del mesero (tú ya usas 'name' en orders)
-  created_by_id: user?.id ?? user?._id ?? null,     // (opcional) por compatibilidad
-  created_by_name: user?.name ?? user?.full_name ?? "Usuario",
-
-  createdBy: {
-    id: user?.id ?? user?._id ?? null,
-    name: user?.name ?? user?.full_name ?? user?.username ?? "Usuario",
-    role: user?.role ?? "user",
-  },
-  customerDetails: {
-    name: user?.name ?? "Usuario",
-    phone: "N/A",
-    guests: customerData?.guests || 1,
-  },
-  orderStatus: "In Progress",
-  bills: {
-    total: total,
-    tax: 0,
-    totalWithTax: total,
-  },
-  items: cartData,
-  table: tableId,
-  paymentMethod: paymentMethod || "Pending",
-};
-
-    createOrderMutation.mutate(orderData);
   };
 
   const isAppending = mode === "append" && !!orderId;
@@ -269,9 +224,23 @@ const logoutMutation = useMutation({
       <div className="flex items-center gap-3 px-5 mt-4">
         <button
           onClick={handlePlaceOrder}
-          className="bg-[#f6b100] px-4 py-3 w-full rounded-lg text-[#1f1f1f] font-semibold text-lg"
+          disabled={isSubmitting || cartData.length === 0}
+          className={`
+            px-4 py-4 w-full rounded-xl text-white font-bold text-xl transition-all duration-300 flex items-center justify-center gap-4
+            ${isSubmitting || cartData.length === 0
+              ? "bg-gray-400 cursor-not-allowed opacity-70"
+              : "bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 shadow-2xl transform hover:scale-105"
+            }
+          `}
         >
-          {isAppending ? "Agregar a la orden" : "Tomar Orden"}
+          {isSubmitting ? (
+            <>
+              <div className="animate-spin rounded-full h-7 w-7 border-4 border-white border-t-transparent"></div>
+              Procesando orden...
+            </>
+          ) : (
+            <>{isAppending ? "Agregar a la orden" : "Tomar Orden"}</>
+          )}
         </button>
       </div>
 

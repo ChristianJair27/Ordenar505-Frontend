@@ -23,21 +23,16 @@ const Menu = () => {
     document.title = "La Peña De Santiago | Menú";
   }, []);
 
-  // ======================= Navigation params =======================
-  const mode = location.state?.mode || searchParams.get("mode"); // "append" | null
+  const mode = location.state?.mode || searchParams.get("mode");
   const orderId = location.state?.orderId || searchParams.get("orderId");
-  const lockRemoval =
-    location.state?.lockRemoval === true || searchParams.get("lockRemoval") === "true";
+  const lockRemoval = location.state?.lockRemoval === true || searchParams.get("lockRemoval") === "true";
 
-  // ======================= Redux =======================
   const user = useSelector((state) => state.user);
   const customerData = useSelector((state) => state.customer);
   const cartItems = useSelector((state) => state.cart.items) || [];
 
-  // ======================= Locked table for append =======================
   const [lockedTable, setLockedTable] = useState(null);
 
-  // Limpia cualquier selectedTable cuando es append para evitar defaults previos
   useEffect(() => {
     if (mode === "append") {
       try { localStorage.removeItem("selectedTable"); } catch {}
@@ -69,20 +64,16 @@ const Menu = () => {
 
   const API_URL = import.meta.env.VITE_BACKEND_URL;
 
-  // Guarda el orderId previo para detectar cambios
   const prevOrderIdRef = useRef(null);
 
-  // 1) Si NO es append o NO hay orderId => limpiar carrito al entrar
   useEffect(() => {
     if (mode !== "append" || !orderId) {
       dispatch(removeAllItems());
       prevOrderIdRef.current = null;
       setLockedTable(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, orderId]);
 
-  // 2) Si sí es append y cambia el orderId => limpiar antes de re-hidratar
   useEffect(() => {
     if (mode === "append" && orderId) {
       const curr = String(orderId);
@@ -93,10 +84,8 @@ const Menu = () => {
       }
       prevOrderIdRef.current = curr;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, orderId]);
 
-  // 3) Hidratar cuando venimos de "Agregar artículos" y FIJAR mesa
   useEffect(() => {
     const hydrateFromOrder = async () => {
       if (mode !== "append" || !orderId) return;
@@ -143,10 +132,8 @@ const Menu = () => {
     };
 
     hydrateFromOrder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, orderId, API_URL]);
 
-  // 4) Reimponer mesa bloqueada si algún componente intenta pisarla
   useEffect(() => {
     if (mode !== "append") return;
     if (lockedTable == null) return;
@@ -167,7 +154,6 @@ const Menu = () => {
     }
   }, [mode, lockedTable, customerData?.table, dispatch]);
 
-  // ======================= Menu Data =======================
   const [categories, setCategories] = useState([]);
   const [dishes, setDishes] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -188,7 +174,9 @@ const Menu = () => {
 
       setCategories(cats);
       setDishes(ds);
-      if (cats.length > 0) setSelectedCategory(cats[0]);
+      if (cats.length > 0 && !selectedCategory) {
+        setSelectedCategory(cats[0]);
+      }
 
       const initialCounts = {};
       ds.forEach((dish) => { initialCounts[dish.id] = 0; });
@@ -202,7 +190,6 @@ const Menu = () => {
 
   useEffect(() => {
     fetchMenuData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const increment = (id) => {
@@ -219,7 +206,6 @@ const Menu = () => {
     }));
   };
 
-  // ✅ Búsqueda GLOBAL cuando hay query, si no, filtra por categoría seleccionada
   const dishesForView = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q) {
@@ -240,7 +226,6 @@ const Menu = () => {
     return map;
   }, [categories]);
 
-  // ======================= Notes Modal =======================
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteTarget, setNoteTarget] = useState(null);
@@ -296,7 +281,6 @@ const Menu = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* User & Table Info */}
             <div className="hidden sm:flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl px-4 py-3 border border-blue-200">
               <div className="p-2.5 bg-blue-600 text-white rounded-xl">
                 <MdRestaurantMenu className="text-xl" />
@@ -313,7 +297,6 @@ const Menu = () => {
               </div>
             </div>
 
-            {/* Mobile Cart Button */}
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow lg:hidden"
@@ -334,62 +317,76 @@ const Menu = () => {
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Left: Menu */}
         <section className={`flex-1 overflow-y-auto ${leftPadBottom} bg-gray-100`}>
-          {/* Search Bar */}
-          <div className="sticky top-0 z-20 bg-gray-100 pt-4 px-4 pb-3">
+         {/* Search Bar + Barra de categorías fija */}
+          <div className="sticky top-0 z-40 bg-gray-100">
+            {/* Search Bar */}
+            <div className="px-4 pt-4 pb-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar platillo..."
+                  className="w-full pl-12 pr-5 py-4 bg-white rounded-2xl shadow-md focus:outline-none focus:ring-4 focus:ring-blue-300 text-lg"
+                />
+                <svg
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* BARRA DE CATEGORÍAS FIJA - SCROLL SUAVE Y VISIBLE */}
+          <div className="sticky top-0 z-50 bg-white shadow-lg border-b border-gray-200">
             <div className="relative">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar platillo..."
-                className="w-full pl-12 pr-5 py-4 bg-white rounded-2xl shadow-md focus:outline-none focus:ring-4 focus:ring-blue-300 text-lg"
-              />
-              <svg
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <div className="px-4 py-5 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200">
+                <div className="flex gap-4 min-w-max pb-2">
+                  {categories.length > 0 ? (
+                    categories.map((category) => (
+                      <button
+                        key={category.id}
+                        onClick={() => setSelectedCategory(category)}
+                        className={`
+                          flex-shrink-0 px-8 py-4 rounded-full font-bold text-lg transition-all duration-300 whitespace-nowrap shadow-md
+                          ${selectedCategory?.id === category.id
+                            ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white scale-105 shadow-xl"
+                            : "bg-gray-100 text-gray-800 hover:bg-gray-200 hover:shadow-lg"
+                          }
+                        `}
+                      >
+                        {category.name}
+                        <span className="ml-3 text-sm font-medium opacity-90">
+                          ({dishes.filter((d) => d.category_id === category.id).length})
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="text-gray-500 py-4 px-8">Cargando categorías...</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Indicadores de scroll (opcional pero bonito) */}
+              <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-white to-transparent pointer-events-none"></div>
+              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
             </div>
           </div>
-
-          {/* Categories */}
-          <div className="px-4 pb-4 overflow-x-auto scrollbar-hide">
-            <div className="flex gap-3">
-              {categories.map((category) => (
-                <button
-                  key={category.id}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`
-                    flex-shrink-0 px-6 py-4 rounded-2xl font-semibold text-lg transition-all duration-300 shadow-md
-                    ${selectedCategory?.id === category.id
-                      ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white scale-105"
-                      : "bg-white text-gray-800 hover:bg-gray-50"
-                    }
-                  `}
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <span>{category.name}</span>
-                    <span className="text-xs opacity-80">
-                      {dishes.filter((d) => d.category_id === category.id).length} ítems
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Dishes */}
-          <div className="px-4 pb-8">
+          <div className="px-4 pb-8 pt-6">
             {loadingMenu ? (
               <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600"></div>
               </div>
             ) : dishesForView.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-xl text-gray-500">No se encontraron platillos</p>
+              <div className="text-center py-20">
+                <p className="text-2xl text-gray-500 font-medium">No se encontraron platillos</p>
+                <p className="text-gray-400 mt-2">Prueba buscando otro término o seleccionando una categoría</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -403,48 +400,45 @@ const Menu = () => {
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-white rounded-3xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 border border-gray-100 flex flex-col"
                     >
-                      <div className="p-4 flex flex-col flex-1 min-h-0">
+                      <div className="p-6 flex flex-col flex-1">
                         {query.trim() && (
-                          <span className="text-xs text-blue-600 font-medium mb-1">
+                          <span className="text-xs text-indigo-600 font-medium mb-2">
                             {categoryNameById.get(item.category_id) || "Sin categoría"}
                           </span>
                         )}
 
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="text-lg font-bold text-gray-900 line-clamp-2">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <h3 className="text-xl font-bold text-gray-900 line-clamp-2">
                             {item.name}
                           </h3>
-                          <span className="text-2xl font-bold text-blue-700 whitespace-nowrap">
+                          <span className="text-2xl font-bold text-indigo-700 whitespace-nowrap">
                             ${Number(item.price || 0).toFixed(2)}
                           </span>
                         </div>
 
                         {item.description && (
-                          <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                          <p className="text-sm text-gray-600 mb-4 line-clamp-3">
                             {item.description}
                           </p>
                         )}
 
-                        {/* Controls */}
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <div className="flex items-center bg-gray-100 rounded-full overflow-hidden">
+                        <div className="mt-auto flex items-center justify-between gap-4">
+                          <div className="flex items-center bg-gray-100 rounded-full overflow-hidden flex-1">
                             <button
                               onClick={() => decrement(item.id)}
                               disabled={count === 0}
-                              className="p-2 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                              aria-label={`Quitar uno de ${item.name}`}
+                              className="p-3 text-gray-700 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
                             >
                               <FaMinus className="text-sm" />
                             </button>
 
-                            <span className="px-3 py-1 font-bold text-lg text-gray-900 min-w-[50px] text-center">
+                            <span className="px-6 py-2 font-bold text-xl text-gray-900">
                               {count}
                             </span>
 
                             <button
                               onClick={() => increment(item.id)}
-                              className="p-2 text-gray-700 hover:bg-gray-200 transition"
-                              aria-label={`Agregar uno de ${item.name}`}
+                              className="p-3 text-gray-700 hover:bg-gray-200 transition"
                             >
                               <FaPlus className="text-sm" />
                             </button>
@@ -454,15 +448,14 @@ const Menu = () => {
                             onClick={() => openNotesForItem(item)}
                             disabled={count === 0}
                             className={`
-                              p-3 rounded-xl font-bold text-white shadow-lg transition-all flex-shrink-0
+                              p-4 rounded-xl font-bold text-white shadow-lg transition-all flex-shrink-0
                               ${count > 0
-                                ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                                ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 transform hover:scale-105"
                                 : "bg-gray-300 cursor-not-allowed"
                               }
                             `}
-                            aria-label={`Agregar ${item.name} al carrito`}
                           >
-                            <FaCart className="text-lg" />
+                            <FaCart className="text-xl" />
                           </button>
                         </div>
                       </div>
