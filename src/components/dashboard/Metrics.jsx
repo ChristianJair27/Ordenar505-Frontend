@@ -55,7 +55,6 @@ const Metrics = () => {
   const API_URL = import.meta.env.VITE_BACKEND_URL;
   const user = useSelector((state) => state.user.user);
 
-  // Menú
   const [categories, setCategories] = useState([]);
   const [dishes, setDishes] = useState([]);
   const [editCategory, setEditCategory] = useState(null);
@@ -63,22 +62,18 @@ const Metrics = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isDishModalOpen, setIsDishModalOpen] = useState(false);
 
-  // Mesas
   const [tables, setTables] = useState([]);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [editTable, setEditTable] = useState(null);
 
-  // Usuarios
   const [users, setUsers] = useState([]);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Eliminación de usuario
   const [userToDelete, setUserToDelete] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Turnos y corte
   const [turnos, setTurnos] = useState([]);
   const [turnoSeleccionado, setTurnoSeleccionado] = useState("");
   const [corteInfo, setCorteInfo] = useState(null);
@@ -87,40 +82,109 @@ const Metrics = () => {
 
   const [activeTab, setActiveTab] = useState("cash");
 
-  // Reportes
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [salesSummary, setSalesSummary] = useState(null);
   const [topDishes, setTopDishes] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState(null);
   const [loadingReports, setLoadingReports] = useState(false);
+
   const [topWaiters, setTopWaiters] = useState([]);
   const [salesByHour, setSalesByHour] = useState([]);
   const [comparison, setComparison] = useState(null);
+
   const [topKitchenTips, setTopKitchenTips] = useState([]);
   const [totalKitchenTips, setTotalKitchenTips] = useState(0);
+
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [loadingAI, setLoadingAI] = useState(false);
 
-  // ==================== FUNCIONES ====================
+  const generateAIAnalysis = async () => {
+    if (!salesSummary) {
+      enqueueSnackbar("Genera los reportes primero", { variant: "warning" });
+      return;
+    }
 
-  const handleDeleteUser = (userId) => {
-    setUserToDelete(userId);
-    setShowDeleteConfirm(true);
-  };
+    setLoadingAI(true);
+    setAiAnalysis("");
 
-  const confirmDeleteUser = async () => {
-    if (!userToDelete) return;
     try {
-      await axiosWrapper.delete(`/api/user/${userToDelete}`);
-      enqueueSnackbar("Usuario eliminado correctamente", { variant: "success" });
-      fetchUsers();
+      const payload = {
+        salesSummary,
+        topDishes: topDishes || [],
+        topWaiters: topWaiters || [],
+        topKitchenTips: topKitchenTips || [],
+        totalKitchenTips: totalKitchenTips || 0,
+        paymentMethods: paymentMethods || { cash: 0, card: 0, other: 0 },
+        salesByHour: salesByHour || [],
+        comparison: comparison || null,
+        start: reportStartDate,
+        end: reportEndDate,
+      };
+
+      const token = localStorage.getItem('token');
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await axios.post(`${API_URL}/api/reports/ai-analysis`, payload, { headers, timeout: 600000 });
+
+      const analysisText = res.data?.analysis || "Análisis generado pero sin contenido.";
+      setAiAnalysis(analysisText);
+      enqueueSnackbar("¡Análisis IA generado con éxito!", { variant: "success" });
     } catch (err) {
-      const msg = err.response?.data?.message || "No se pudo eliminar el usuario";
+      console.error("Error IA:", err);
+      const msg = err.response?.data?.message || err.message || "Error al generar análisis";
       enqueueSnackbar(msg, { variant: "error" });
     } finally {
-      setShowDeleteConfirm(false);
-      setUserToDelete(null);
+      setLoadingAI(false);
+    }
+  };
+
+  const generateReports = async () => {
+    if (!reportStartDate || !reportEndDate) {
+      enqueueSnackbar("Selecciona fechas válidas", { variant: "warning" });
+      return;
+    }
+
+    setLoadingReports(true);
+    try {
+      const params = `?start=${reportStartDate}&end=${reportEndDate}`;
+
+      const [
+        summaryRes, 
+        topDishesRes, 
+        paymentRes, 
+        topWaitersRes, 
+        salesHourRes, 
+        comparisonRes,
+        kitchenTipsRes
+      ] = await Promise.all([
+        axiosWrapper.get(`${API_URL}/api/reports/sales-summary${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-dishes${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/payment-methods${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-waiters${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/sales-by-hour${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/comparison${params}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-kitchen-tips${params}`)
+      ]);
+
+      setSalesSummary(summaryRes.data);
+      setTopDishes(topDishesRes.data.top10 || []);
+      setPaymentMethods(paymentRes.data);
+      setTopWaiters(topWaitersRes.data.top10 || []);
+      setSalesByHour(salesHourRes.data.hours || []);
+      setComparison(comparisonRes.data);
+
+      setTopKitchenTips(kitchenTipsRes.data.top10 || []);
+      const totalTips = kitchenTipsRes.data.top10?.reduce((sum, w) => sum + parseFloat(w.kitchen_tips || 0), 0) || 0;
+      setTotalKitchenTips(totalTips);
+
+      enqueueSnackbar("Reportes generados", { variant: "success" });
+    } catch (err) {
+      console.error(err);
+      enqueueSnackbar("Error al cargar reportes", { variant: "error" });
+    } finally {
+      setLoadingReports(false);
     }
   };
 
@@ -235,14 +299,6 @@ const Metrics = () => {
 
   const orders = resData?.data || [];
 
-  const filteredUsers = users.filter(user =>
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // ==================== USEEFFECT ====================
-
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
     setReportStartDate(today);
@@ -258,7 +314,39 @@ const Metrics = () => {
     ]);
   }, []);
 
-  // ==================== RENDER ====================
+  const filteredUsers = users.filter(user =>
+    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.role?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleDeleteUser = (userId) => {
+    setUserToDelete(userId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    try {
+      await axiosWrapper.delete(`/api/user/${userToDelete}`);
+      enqueueSnackbar("Usuario eliminado correctamente", { variant: "success" });
+      fetchUsers();
+    } catch (err) {
+      const msg = err.response?.data?.message || "No se pudo eliminar el usuario";
+      enqueueSnackbar(msg, { variant: "error" });
+    } finally {
+      setShowDeleteConfirm(false);
+      setUserToDelete(null);
+    }
+  };
+
+  const tabs = [
+    { key: "cash", label: "Caja" },
+    { key: "menu", label: "Menú" },
+    { key: "users", label: "Usuarios" },
+    { key: "tables", label: "Mesas" },
+    { key: "reports", label: "Reportes & IA" },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -281,20 +369,17 @@ const Metrics = () => {
         {/* Tabs */}
         <div className="bg-white rounded-2xl shadow-md p-2 mb-12">
           <div className="flex flex-wrap gap-2">
-            {["cash", "menu", "users", "tables", "reports"].map((key) => (
+            {tabs.map((tab) => (
               <button
-                key={key}
-                onClick={() => setActiveTab(key)}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
                 className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all ${
-                  activeTab === key
+                  activeTab === tab.key
                     ? "bg-indigo-600 text-white shadow-lg"
                     : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
-                {key === "cash" ? "Caja" :
-                 key === "menu" ? "Menú" :
-                 key === "users" ? "Usuarios" :
-                 key === "tables" ? "Mesas" : "Reportes & IA"}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -303,32 +388,76 @@ const Metrics = () => {
         {/* === CAJA === */}
         {activeTab === "cash" && (
           <div className="space-y-12">
-            {/* ... todo tu código de caja sin cambios ... */}
-            {/* (Mantengo el código original de caja completo para no saltar líneas) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
               <div className="bg-white rounded-2xl shadow-lg p-10">
                 <h3 className="text-2xl font-bold text-gray-900 mb-8">Registrar Movimiento</h3>
                 <div className="space-y-6">
                   <div className="flex gap-4">
-                    <button onClick={() => setType("ingreso")} className={`flex-1 py-4 rounded-xl font-semibold transition ${type === "ingreso" ? "bg-green-600 text-white shadow-md" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>Ingreso</button>
-                    <button onClick={() => setType("retiro")} className={`flex-1 py-4 rounded-xl font-semibold transition ${type === "retiro" ? "bg-red-600 text-white shadow-md" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>Retiro</button>
+                    <button
+                      onClick={() => setType("ingreso")}
+                      className={`flex-1 py-4 rounded-xl font-semibold transition ${
+                        type === "ingreso" 
+                          ? "bg-green-600 text-white shadow-md" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      Ingreso
+                    </button>
+                    <button
+                      onClick={() => setType("retiro")}
+                      className={`flex-1 py-4 rounded-xl font-semibold transition ${
+                        type === "retiro" 
+                          ? "bg-red-600 text-white shadow-md" 
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      }`}
+                    >
+                      Retiro
+                    </button>
                   </div>
-                  <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Monto" className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500" />
-                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripción (opcional)" className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500" />
-                  <button onClick={handleSubmit} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105">Registrar Movimiento</button>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="Monto"
+                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Descripción (opcional)"
+                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={handleSubmit}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105"
+                  >
+                    Registrar Movimiento
+                  </button>
                 </div>
               </div>
 
               <div className="bg-white rounded-2xl shadow-lg p-10">
                 <h3 className="text-2xl font-bold text-gray-900 mb-8">Corte de Caja por Turno</h3>
                 <div className="space-y-6">
-                  <select value={turnoSeleccionado} onChange={(e) => setTurnoSeleccionado(e.target.value)} className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500">
+                  <select
+                    value={turnoSeleccionado}
+                    onChange={(e) => setTurnoSeleccionado(e.target.value)}
+                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500"
+                  >
                     <option value="">-- Selecciona turno --</option>
                     {turnos.map((turno) => (
-                      <option key={turno.id} value={turno.id}>Turno #{turno.id} - {formatDateAndTime(turno.start_time)}</option>
+                      <option key={turno.id} value={turno.id}>
+                        Turno #{turno.id} - {formatDateAndTime(turno.start_time)}
+                      </option>
                     ))}
                   </select>
-                  <button onClick={handleCorte} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105">Generar Corte</button>
+                  <button
+                    onClick={handleCorte}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105"
+                  >
+                    Generar Corte
+                  </button>
                 </div>
               </div>
             </div>
@@ -354,9 +483,13 @@ const Metrics = () => {
                         <td className="py-6">{order.waiter_name || "N/A"}</td>
                         <td className="py-6">{order.date ? formatDateAndTime(order.date) : "N/A"}</td>
                         <td className="py-6">{order.description || "N/A"}</td>
-                        <td className={`py-6 text-right font-bold ${order.type === "ingreso" ? "text-green-600" : "text-red-600"}`}>${Number(order.amount || 0).toFixed(2)}</td>
+                        <td className={`py-6 text-right font-bold ${order.type === "ingreso" ? "text-green-600" : "text-red-600"}`}>
+                          ${Number(order.amount || 0).toFixed(2)}
+                        </td>
                         <td className="py-6">
-                          <span className={`px-4 py-2 rounded-full text-sm font-medium ${order.payment_method === "efectivo" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}>
+                          <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+                            order.payment_method === "efectivo" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                          }`}>
                             {order.payment_method || "N/D"}
                           </span>
                         </td>
@@ -372,11 +505,13 @@ const Metrics = () => {
         {/* === MENÚ === */}
         {activeTab === "menu" && (
           <div className="space-y-12">
-            {/* Categorías */}
             <div className="bg-white rounded-2xl shadow-lg p-10">
               <div className="flex justify-between items-center mb-10">
                 <h2 className="text-3xl font-bold text-gray-900">Categorías del Menú</h2>
-                <button onClick={() => setIsCategoryModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4">
+                <button
+                  onClick={() => setIsCategoryModalOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4"
+                >
                   Nueva Categoría <MdCategory className="text-2xl" />
                 </button>
               </div>
@@ -390,8 +525,15 @@ const Metrics = () => {
                         <h3 className="text-2xl font-bold text-gray-900">{cat.name}</h3>
                       </div>
                       <div className="flex justify-between items-center">
-                        <p className="text-gray-600">{dishes.filter((d) => d.category_id === cat.id).length} platillos</p>
-                        <button onClick={() => setEditCategory(cat)} className="text-indigo-600 hover:text-indigo-700 font-medium">Editar</button>
+                        <p className="text-gray-600">
+                          {dishes.filter((d) => d.category_id === cat.id).length} platillos
+                        </p>
+                        <button
+                          onClick={() => setEditCategory(cat)}
+                          className="text-indigo-600 hover:text-indigo-700 font-medium"
+                        >
+                          Editar
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -399,11 +541,13 @@ const Metrics = () => {
               </div>
             </div>
 
-            {/* Platillos */}
             <div className="bg-white rounded-2xl shadow-lg p-10">
               <div className="flex justify-between items-center mb-10">
                 <h2 className="text-3xl font-bold text-gray-900">Platillos</h2>
-                <button onClick={() => setIsDishModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4">
+                <button
+                  onClick={() => setIsDishModalOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4"
+                >
                   Nuevo Platillo <BiSolidDish className="text-2xl" />
                 </button>
               </div>
@@ -436,8 +580,15 @@ const Metrics = () => {
                           <span className="px-4 py-2 bg-green-100 text-green-800 rounded-full font-medium">Activo</span>
                         </td>
                         <td className="py-8 text-right">
-                          <button onClick={() => setEditDish(dish)} className="text-indigo-600 hover:text-indigo-700 font-medium mr-6">Editar</button>
-                          <button className="text-red-600 hover:text-red-700 font-medium">Eliminar</button>
+                          <button
+                            onClick={() => setEditDish(dish)}
+                            className="text-indigo-600 hover:text-indigo-700 font-medium mr-6"
+                          >
+                            Editar
+                          </button>
+                          <button className="text-red-600 hover:text-red-700 font-medium">
+                            Eliminar
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -486,20 +637,22 @@ const Metrics = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-8 text-lg">{user.name}</td>
-                      <td className="py-8">{user.email}</td>
-                      <td className="py-8">{user.phone || "—"}</td>
+                  {filteredUsers.map((userItem) => (
+                    <tr key={userItem.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-8 text-lg">{userItem.name}</td>
+                      <td className="py-8">{userItem.email}</td>
+                      <td className="py-8">{userItem.phone || "—"}</td>
                       <td className="py-8">
-                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${user.role === "admin" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"}`}>
-                          {user.role}
+                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+                          userItem.role === "admin" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"
+                        }`}>
+                          {userItem.role}
                         </span>
                       </td>
                       <td className="py-8 text-right space-x-6">
                         <button
                           onClick={() => {
-                            setEditingUser(user);
+                            setEditingUser(userItem);
                             setIsAddUserOpen(true);
                           }}
                           className="text-indigo-600 hover:text-indigo-700 font-medium"
@@ -507,7 +660,7 @@ const Metrics = () => {
                           Editar
                         </button>
                         <button
-                          onClick={() => handleDeleteUser(user.id)}
+                          onClick={() => handleDeleteUser(userItem.id)}
                           className="text-red-600 hover:text-red-700 font-medium"
                         >
                           Eliminar
@@ -526,7 +679,10 @@ const Metrics = () => {
           <div className="bg-white rounded-2xl shadow-lg p-10">
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-3xl font-bold text-gray-900">Mesas</h2>
-              <button onClick={() => setIsTableModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105">
+              <button
+                onClick={() => setIsTableModalOpen(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105"
+              >
                 Nueva Mesa
               </button>
             </div>
@@ -545,14 +701,23 @@ const Metrics = () => {
                     <tr key={table.id} className="border-b border-gray-100">
                       <td className="py-8 text-xl font-semibold">Mesa {table.table_no}</td>
                       <td className="py-8">
-                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${table.status === "ocupada" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}>
+                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+                          table.status === "ocupada" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
+                        }`}>
                           {table.status}
                         </span>
                       </td>
                       <td className="py-8">{table.seats} personas</td>
                       <td className="py-8 text-right">
-                        <button onClick={() => setEditTable(table)} className="text-indigo-600 hover:text-indigo-700 font-medium mr-6">Editar</button>
-                        <button className="text-red-600 hover:text-red-700 font-medium">Eliminar</button>
+                        <button
+                          onClick={() => setEditTable(table)}
+                          className="text-indigo-600 hover:text-indigo-700 font-medium mr-6"
+                        >
+                          Editar
+                        </button>
+                        <button className="text-red-600 hover:text-red-700 font-medium">
+                          Eliminar
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -565,22 +730,224 @@ const Metrics = () => {
         {/* === REPORTES & IA === */}
         {activeTab === "reports" && (
           <div className="space-y-16">
-            {/* Tu código de reportes completo (sin cambios) */}
-            {/* ... (lo dejo igual para no hacer el mensaje eterno) ... */}
-            {/* Si quieres que lo actualice también, avísame */}
+            {/* Filtros */}
+            <div className="bg-white rounded-2xl shadow-lg p-10">
+              <h2 className="text-3xl font-bold text-gray-900 mb-8">Filtros de Reporte</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                  <label className="block text-lg font-medium text-gray-700 mb-3">Desde</label>
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    className="w-full px-6 py-4 border border-gray-300 rounded-xl text-lg focus:ring-4 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-lg font-medium text-gray-700 mb-3">Hasta</label>
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    className="w-full px-6 py-4 border border-gray-300 rounded-xl text-lg focus:ring-4 focus:ring-indigo-500"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={generateReports}
+                    disabled={loadingReports}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold py-4 px-10 rounded-xl shadow-lg transition"
+                  >
+                    {loadingReports ? "Generando..." : "Generar Reportes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Resumen clave */}
+            {salesSummary && (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-10 rounded-2xl shadow-xl text-white">
+                  <p className="text-blue-200 text-lg mb-4">Ventas Totales</p>
+                  <p className="text-5xl font-extrabold">${salesSummary.totalSales.toFixed(0)}</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-500 to-green-700 p-10 rounded-2xl shadow-xl text-white">
+                  <p className="text-green-200 text-lg mb-4">Órdenes</p>
+                  <p className="text-5xl font-extrabold">{salesSummary.totalOrders}</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-500 to-purple-700 p-10 rounded-2xl shadow-xl text-white">
+                  <p className="text-purple-200 text-lg mb-4">Ticket Promedio</p>
+                  <p className="text-5xl font-extrabold">${salesSummary.avgTicket.toFixed(0)}</p>
+                </div>
+                <div className="bg-gradient-to-br from-orange-500 to-orange-700 p-10 rounded-2xl shadow-xl text-white">
+                  <p className="text-orange-200 text-lg mb-4">Clientes</p>
+                  <p className="text-5xl font-extrabold">{salesSummary.totalCustomers}</p>
+                </div>
+                <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-10 rounded-2xl shadow-xl text-white">
+                  <p className="text-amber-200 text-lg mb-4">Propinas Cocina</p>
+                  <p className="text-5xl font-extrabold">${totalKitchenTips.toFixed(0)}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Análisis IA - Hero */}
+            {salesSummary && (
+              <div>
+                <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl shadow-2xl overflow-hidden">
+                  <div className="p-12 lg:p-20">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-10">
+                      <div>
+                        <h2 className="text-5xl font-bold text-white mb-6">
+                          Análisis Inteligente con IA
+                        </h2>
+                        <p className="text-2xl text-indigo-100 max-w-4xl">
+                          Tu asesor personal: insights profundos, alertas y recomendaciones accionables para hacer crecer tu restaurante.
+                        </p>
+                      </div>
+                      <button
+                        onClick={generateAIAnalysis}
+                        disabled={loadingAI}
+                        className="bg-white text-purple-700 hover:bg-gray-100 font-bold py-6 px-16 rounded-2xl shadow-2xl transition transform hover:scale-105 disabled:opacity-60 flex items-center gap-6 text-2xl"
+                      >
+                        {loadingAI ? (
+                          <>
+                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-purple-700 border-t-transparent"></div>
+                            Analizando...
+                          </>
+                        ) : (
+                          "Generar Análisis IA"
+                        )}
+                      </button>
+                    </div>
+
+                    {loadingAI && !aiAnalysis && (
+                      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-20 text-center">
+                        <div className="animate-spin rounded-full h-32 w-32 border-8 border-white border-t-transparent mx-auto mb-10"></div>
+                        <p className="text-4xl text-white font-bold">Procesando tus datos con IA...</p>
+                        <p className="text-2xl text-indigo-100 mt-6">Esto puede tomar 1-4 minutos. ¡El resultado será increíble!</p>
+                      </div>
+                    )}
+
+                    {aiAnalysis && (
+                      <div className="bg-white rounded-3xl p-12 lg:p-20 shadow-3xl">
+                        <div className="prose prose-2xl max-w-none text-gray-800">
+                          <div className="whitespace-pre-line leading-relaxed text-xl font-medium">
+                            {aiAnalysis}
+                          </div>
+                        </div>
+                        <div className="mt-12 pt-10 border-t-2 border-gray-200 flex justify-end">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(aiAnalysis);
+                              enqueueSnackbar("Análisis copiado al portapapeles", { variant: "success" });
+                            }}
+                            className="px-10 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl font-bold text-xl shadow-xl transition"
+                          >
+                            Copiar Análisis Completo
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Gráficos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              {topDishes.length > 0 && (
+                <div className="bg-white rounded-3xl shadow-lg p-12">
+                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Top Platillos Más Vendidos</h3>
+                  <Bar
+                    data={{
+                      labels: topDishes.map(d => d.name.length > 20 ? d.name.substring(0, 20) + "..." : d.name),
+                      datasets: [{
+                        data: topDishes.map(d => d.total_sales),
+                        backgroundColor: "#6366f1",
+                        borderRadius: 12,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false } },
+                      scales: { y: { beginAtZero: true } }
+                    }}
+                  />
+                </div>
+              )}
+
+              {topWaiters.length > 0 && (
+                <div className="bg-white rounded-3xl shadow-lg p-12">
+                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Top Meseros por Ventas</h3>
+                  <Bar
+                    data={{
+                      labels: topWaiters.map(w => w.name.length > 20 ? w.name.substring(0, 20) + "..." : w.name),
+                      datasets: [{
+                        data: topWaiters.map(w => w.total_sales),
+                        backgroundColor: "#10b981",
+                        borderRadius: 12,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false } },
+                      scales: { y: { beginAtZero: true } }
+                    }}
+                  />
+                </div>
+              )}
+
+              {salesByHour.length > 0 && (
+                <div className="bg-white rounded-3xl shadow-lg p-12">
+                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Ventas por Hora</h3>
+                  <Line
+                    data={{
+                      labels: salesByHour.map(h => `${h.hour}:00`),
+                      datasets: [{
+                        data: salesByHour.map(h => h.total_sales),
+                        borderColor: "#f59e0b",
+                        backgroundColor: "rgba(245, 158, 11, 0.1)",
+                        tension: 0.4,
+                        fill: true,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false } },
+                      scales: { y: { beginAtZero: true } }
+                    }}
+                  />
+                </div>
+              )}
+
+              {paymentMethods && (
+                <div className="bg-white rounded-3xl shadow-lg p-12">
+                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Métodos de Pago</h3>
+                  <div className="max-w-md mx-auto">
+                    <Pie
+                      data={{
+                        labels: ["Efectivo", "Tarjeta", "Otros"],
+                        datasets: [{
+                          data: [paymentMethods.cash, paymentMethods.card, paymentMethods.other],
+                          backgroundColor: ["#10b981", "#3b82f6", "#f59e0b"],
+                        }]
+                      }}
+                      options={{ responsive: true }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* ==================== MODALES ==================== */}
-
+        {/* Modales */}
         {isCategoryModalOpen && <AddCategoryModal setIsOpen={setIsCategoryModalOpen} onClose={() => fetchCategories()} />}
         {editCategory && <AddCategoryModal setIsOpen={() => setEditCategory(null)} initialData={editCategory} isEditing />}
         {isDishModalOpen && <AddDishModal setIsOpen={setIsDishModalOpen} onClose={() => fetchDishes()} />}
         {editDish && <AddDishModal setIsOpen={() => setEditDish(null)} initialData={editDish} isEditing />}
         {isTableModalOpen && <AddTableModal setIsOpen={setIsTableModalOpen} onTableAdded={() => fetchTables()} />}
         {editTable && <AddTableModal setIsOpen={() => setEditTable(null)} initialData={editTable} isEditing />}
-
-        {/* Modal de Usuario (Crear / Editar) */}
         {isAddUserOpen && (
           <AddUserModal
             setIsOpen={setIsAddUserOpen}
@@ -588,8 +955,6 @@ const Metrics = () => {
             initialData={editingUser}
           />
         )}
-
-        {/* Modal de Confirmación de Eliminación */}
         {showDeleteConfirm && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
@@ -619,8 +984,6 @@ const Metrics = () => {
             </div>
           </div>
         )}
-
-        {/* Modal de Corte */}
         {showCorteModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl">
@@ -628,7 +991,6 @@ const Metrics = () => {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
