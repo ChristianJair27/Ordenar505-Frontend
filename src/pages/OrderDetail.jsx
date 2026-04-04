@@ -260,16 +260,17 @@ const OrderDetail = () => {
   };
 
   // Ir al menú para AGREGAR artículos a esta orden
-  const handleAddItems = () => {
-    navigate(`/menu?mode=append&orderId=${order.id}`, {
-      state: {
-        mode: "append",
-        orderId: order.id,
-        lockRemoval: true,
-      },
-      replace: false,
-    });
-  };
+  
+const handleAddItems = () => {
+  navigate(`/menu?mode=append&orderId=${order.id}&returnTo=/`, {
+    state: {
+      mode: "append",
+      orderId: order.id,
+      lockRemoval: true,
+      returnTo: "/",               // ← nuevo
+    },
+  });
+};
 
   if (!order)
     return (

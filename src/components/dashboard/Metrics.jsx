@@ -1,241 +1,208 @@
-import { useEffect, useState, useRef } from "react";
-import axios from "axios";
+import { useEffect, useState, useRef, useMemo } from "react";
 import AddCategoryModal from "./AddCategoryModal";
 import AddDishModal from "./AddDishModal";
-import { MdCategory } from "react-icons/md";
+import AddUserModal from "./AddUserModal";
+import AddTableModal from "./AddTableModal";
+import CorteTicket from "../corte/CorteTicket";
+import { MdCategory, MdTableRestaurant, MdPointOfSale } from "react-icons/md";
 import { BiSolidDish } from "react-icons/bi";
+import { BsCashStack } from "react-icons/bs";
+import {
+  FiUsers, FiDollarSign, FiBarChart2, FiRefreshCw,
+  FiTrendingUp, FiPlus, FiSearch, FiEdit2, FiTrash2,
+} from "react-icons/fi";
+import { FaRobot } from "react-icons/fa";
 import { useSelector } from "react-redux";
 import { axiosWrapper } from "../../https/axiosWrapper";
-import AddUserModal from "./AddUserModal";
 import { enqueueSnackbar } from "notistack";
 import { formatDateAndTime } from "../../utils";
-import AddTableModal from "./AddTableModal";
-
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  keepPreviousData,
-  useQuery,
-} from "@tanstack/react-query";
-
-import CorteTicket from "../corte/CorteTicket";
-
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement,
+  PointElement, LineElement, Title, Tooltip, Legend, Filler,
 } from "chart.js";
-
-import { Bar, Pie, Line } from 'react-chartjs-2';
+import { Bar, Pie, Line } from "react-chartjs-2";
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
+  CategoryScale, LinearScale, BarElement, ArcElement,
+  PointElement, LineElement, Title, Tooltip, Legend, Filler
 );
 
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0,
+    transition: { delay: i * 0.05, type: "spring", stiffness: 260, damping: 24 },
+  }),
+};
+
+// ── Pequeña stat card reutilizable ─────────────────────────────────────────
+const StatCard = ({ label, value, sub, color = "indigo", icon }) => {
+  const colors = {
+    indigo: "from-indigo-600 to-indigo-700",
+    emerald: "from-emerald-500 to-emerald-700",
+    violet: "from-violet-600 to-violet-700",
+    amber: "from-amber-500 to-amber-700",
+    blue: "from-blue-500 to-blue-700",
+    rose: "from-rose-500 to-rose-700",
+  };
+  return (
+    <div className={`bg-gradient-to-br ${colors[color]} rounded-2xl p-5 text-white shadow-md`}>
+      <div className="flex justify-between items-start mb-3">
+        <p className="text-white/70 text-xs font-semibold uppercase tracking-wide">{label}</p>
+        <span className="text-white/50 text-xl">{icon}</span>
+      </div>
+      <p className="text-3xl font-black leading-none">{value}</p>
+      {sub && <p className="text-white/60 text-xs mt-1.5">{sub}</p>}
+    </div>
+  );
+};
+
+// ── Badge de rol ────────────────────────────────────────────────────────────
+const RoleBadge = ({ role }) => {
+  const map = {
+    admin:   "bg-violet-100 text-violet-800",
+    cajero:  "bg-blue-100 text-blue-800",
+    mesero:  "bg-emerald-100 text-emerald-700",
+    waiter:  "bg-emerald-100 text-emerald-700",
+    cashier: "bg-blue-100 text-blue-800",
+  };
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${map[role?.toLowerCase()] ?? "bg-gray-100 text-gray-700"}`}>
+      {role}
+    </span>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
 const Metrics = () => {
-  const [totalCash, setTotalCash] = useState(0);
-  const [amount, setAmount] = useState("");
-  const [type, setType] = useState("ingreso");
-  const [description, setDescription] = useState("");
   const API_URL = import.meta.env.VITE_BACKEND_URL;
-  const user = useSelector((state) => state.user.user);
+  // ✅ FIX: era state.user.user (incorrecto) → ahora state.user
+  const user = useSelector((state) => state.user);
 
-  const [categories, setCategories] = useState([]);
-  const [dishes, setDishes] = useState([]);
-  const [editCategory, setEditCategory] = useState(null);
-  const [editDish, setEditDish] = useState(null);
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [totalCash,    setTotalCash]    = useState(0);
+  const [amount,       setAmount]       = useState("");
+  const [type,         setType]         = useState("ingreso");
+  const [description,  setDescription]  = useState("");
+
+  const [categories,        setCategories]        = useState([]);
+  const [dishes,            setDishes]            = useState([]);
+  const [editCategory,      setEditCategory]      = useState(null);
+  const [editDish,          setEditDish]          = useState(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [isDishModalOpen, setIsDishModalOpen] = useState(false);
+  const [isDishModalOpen,   setIsDishModalOpen]   = useState(false);
 
-  const [tables, setTables] = useState([]);
-  const [isTableModalOpen, setIsTableModalOpen] = useState(false);
-  const [editTable, setEditTable] = useState(null);
+  const [tables,          setTables]          = useState([]);
+  const [isTableModalOpen,setIsTableModalOpen]= useState(false);
+  const [editTable,       setEditTable]       = useState(null);
 
-  const [users, setUsers] = useState([]);
-  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const [userToDelete, setUserToDelete] = useState(null);
+  const [users,           setUsers]           = useState([]);
+  const [isAddUserOpen,   setIsAddUserOpen]   = useState(false);
+  const [editingUser,     setEditingUser]     = useState(null);
+  const [searchTerm,      setSearchTerm]      = useState("");
+  const [roleFilter,      setRoleFilter]      = useState("all");
+  const [userToDelete,    setUserToDelete]    = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const [turnos, setTurnos] = useState([]);
+  const [turnos,           setTurnos]           = useState([]);
   const [turnoSeleccionado, setTurnoSeleccionado] = useState("");
-  const [corteInfo, setCorteInfo] = useState(null);
-  const [showCorteModal, setShowCorteModal] = useState(false);
+  const [corteInfo,        setCorteInfo]         = useState(null);
+  const [showCorteModal,   setShowCorteModal]    = useState(false);
   const corteRef = useRef();
 
   const [activeTab, setActiveTab] = useState("cash");
 
-  const [reportStartDate, setReportStartDate] = useState("");
-  const [reportEndDate, setReportEndDate] = useState("");
-  const [salesSummary, setSalesSummary] = useState(null);
-  const [topDishes, setTopDishes] = useState([]);
-  const [paymentMethods, setPaymentMethods] = useState(null);
-  const [loadingReports, setLoadingReports] = useState(false);
-
-  const [topWaiters, setTopWaiters] = useState([]);
-  const [salesByHour, setSalesByHour] = useState([]);
-  const [comparison, setComparison] = useState(null);
-
-  const [topKitchenTips, setTopKitchenTips] = useState([]);
+  const [reportStartDate,  setReportStartDate]  = useState("");
+  const [reportEndDate,    setReportEndDate]    = useState("");
+  const [salesSummary,     setSalesSummary]     = useState(null);
+  const [topDishes,        setTopDishes]        = useState([]);
+  const [paymentMethods,   setPaymentMethods]   = useState(null);
+  const [loadingReports,   setLoadingReports]   = useState(false);
+  const [topWaiters,       setTopWaiters]       = useState([]);
+  const [salesByHour,      setSalesByHour]      = useState([]);
+  const [comparison,       setComparison]       = useState(null);
+  const [topKitchenTips,   setTopKitchenTips]   = useState([]);
   const [totalKitchenTips, setTotalKitchenTips] = useState(0);
+  const [aiAnalysis,       setAiAnalysis]       = useState("");
+  const [loadingAI,        setLoadingAI]        = useState(false);
 
-  const [aiAnalysis, setAiAnalysis] = useState("");
-  const [loadingAI, setLoadingAI] = useState(false);
-
-  const generateAIAnalysis = async () => {
-    if (!salesSummary) {
-      enqueueSnackbar("Genera los reportes primero", { variant: "warning" });
-      return;
-    }
-
-    setLoadingAI(true);
-    setAiAnalysis("");
-
-    try {
-      const payload = {
-        salesSummary,
-        topDishes: topDishes || [],
-        topWaiters: topWaiters || [],
-        topKitchenTips: topKitchenTips || [],
-        totalKitchenTips: totalKitchenTips || 0,
-        paymentMethods: paymentMethods || { cash: 0, card: 0, other: 0 },
-        salesByHour: salesByHour || [],
-        comparison: comparison || null,
-        start: reportStartDate,
-        end: reportEndDate,
-      };
-
-      const token = localStorage.getItem('token');
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await axios.post(`${API_URL}/api/reports/ai-analysis`, payload, { headers, timeout: 600000 });
-
-      const analysisText = res.data?.analysis || "Análisis generado pero sin contenido.";
-      setAiAnalysis(analysisText);
-      enqueueSnackbar("¡Análisis IA generado con éxito!", { variant: "success" });
-    } catch (err) {
-      console.error("Error IA:", err);
-      const msg = err.response?.data?.message || err.message || "Error al generar análisis";
-      enqueueSnackbar(msg, { variant: "error" });
-    } finally {
-      setLoadingAI(false);
-    }
-  };
-
-  const generateReports = async () => {
-    if (!reportStartDate || !reportEndDate) {
-      enqueueSnackbar("Selecciona fechas válidas", { variant: "warning" });
-      return;
-    }
-
-    setLoadingReports(true);
-    try {
-      const params = `?start=${reportStartDate}&end=${reportEndDate}`;
-
-      const [
-        summaryRes, 
-        topDishesRes, 
-        paymentRes, 
-        topWaitersRes, 
-        salesHourRes, 
-        comparisonRes,
-        kitchenTipsRes
-      ] = await Promise.all([
-        axiosWrapper.get(`${API_URL}/api/reports/sales-summary${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/top-dishes${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/payment-methods${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/top-waiters${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/sales-by-hour${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/comparison${params}`),
-        axiosWrapper.get(`${API_URL}/api/reports/top-kitchen-tips${params}`)
-      ]);
-
-      setSalesSummary(summaryRes.data);
-      setTopDishes(topDishesRes.data.top10 || []);
-      setPaymentMethods(paymentRes.data);
-      setTopWaiters(topWaitersRes.data.top10 || []);
-      setSalesByHour(salesHourRes.data.hours || []);
-      setComparison(comparisonRes.data);
-
-      setTopKitchenTips(kitchenTipsRes.data.top10 || []);
-      const totalTips = kitchenTipsRes.data.top10?.reduce((sum, w) => sum + parseFloat(w.kitchen_tips || 0), 0) || 0;
-      setTotalKitchenTips(totalTips);
-
-      enqueueSnackbar("Reportes generados", { variant: "success" });
-    } catch (err) {
-      console.error(err);
-      enqueueSnackbar("Error al cargar reportes", { variant: "error" });
-    } finally {
-      setLoadingReports(false);
-    }
-  };
+  // ── Fetch functions ────────────────────────────────────────────────────────
+  // ✅ FIX: Ahora todos usan axiosWrapper (con token) + try/catch
 
   const fetchCashbox = async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/cash-balance`);
-      setTotalCash(res.data.total || 0);
-    } catch (err) {
-      console.error(err);
-    }
+      const res = await axiosWrapper.get(`${API_URL}/api/cash-balance`);
+      setTotalCash(res.data?.total ?? res.data?.balance ?? 0);
+    } catch (err) { console.error("fetchCashbox:", err); }
   };
 
   const fetchCategories = async () => {
-    const res = await axios.get(`${API_URL}/api/categories`);
-    setCategories(res.data.data || []);
+    try {
+      const res = await axiosWrapper.get(`${API_URL}/api/categories`);
+      setCategories(res.data?.data || res.data || []);
+    } catch (err) { console.error("fetchCategories:", err); }
   };
 
   const fetchDishes = async () => {
-    const res = await axios.get(`${API_URL}/api/dishes`);
-    setDishes(res.data.data || []);
+    try {
+      const res = await axiosWrapper.get(`${API_URL}/api/dishes`);
+      setDishes(res.data?.data || res.data || []);
+    } catch (err) { console.error("fetchDishes:", err); }
   };
 
   const fetchTables = async () => {
-    const res = await axios.get(`${API_URL}/api/table`);
-    setTables(res.data.data || []);
+    try {
+      const res = await axiosWrapper.get(`${API_URL}/api/table`);
+      setTables(res.data?.data || res.data || []);
+    } catch (err) { console.error("fetchTables:", err); }
   };
 
   const fetchUsers = async () => {
     try {
       const res = await axiosWrapper.get("/api/user");
       setUsers(res.data?.data || res.data || []);
-    } catch (err) {
-      setUsers([]);
-    }
+    } catch (err) { setUsers([]); }
   };
 
   const fetchTurnos = async () => {
     try {
       const res = await axiosWrapper.get(`${API_URL}/api/shifts`);
-      setTurnos(res.data || []);
-    } catch (error) {
-      enqueueSnackbar("No se pudieron cargar los turnos", { variant: "error" });
-    }
+      setTurnos(res.data?.data || res.data || []);
+    } catch { enqueueSnackbar("No se pudieron cargar los turnos", { variant: "error" }); }
   };
 
+  // ── Movimientos de caja (useQuery) ─────────────────────────────────────────
+  const { data: resData, refetch: refetchMovimientos, isLoading: movLoading } = useQuery({
+    queryKey: ["cashMovements"],
+    queryFn: () =>
+      axiosWrapper.get(`${API_URL}/api/cash-register`).then((r) => r.data),
+    placeholderData: keepPreviousData,
+  });
+
+  const movements = resData?.data || [];
+
+  // Stats de hoy desde los movimientos
+  const todayStr = new Date().toLocaleDateString("es-ES");
+  const todayStats = useMemo(() => {
+    const todays = movements.filter((m) => {
+      const d = m.date ? new Date(m.date).toLocaleDateString("es-ES") : "";
+      return d === todayStr;
+    });
+    const sales    = todays.filter((m) => m.type === "venta").reduce((s, m) => s + Number(m.amount || 0), 0);
+    const ingresos = todays.filter((m) => m.type === "ingreso").reduce((s, m) => s + Number(m.amount || 0), 0);
+    const retiros  = todays.filter((m) => m.type === "retiro").reduce((s, m) => s + Number(m.amount || 0), 0);
+    const ordenes  = new Set(todays.filter((m) => m.order_id).map((m) => m.order_id)).size;
+    return { sales, ingresos, retiros, ordenes };
+  }, [movements, todayStr]);
+
+  // ── Acciones ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!amount || isNaN(amount)) {
       enqueueSnackbar("Ingresa un monto válido", { variant: "error" });
       return;
     }
-
     try {
       await axiosWrapper.post(`${API_URL}/api/admin/cash-movement`, {
         type,
@@ -243,11 +210,9 @@ const Metrics = () => {
         description: description || `Movimiento manual: ${type}`,
         user_id: user?.id,
       });
-
-      setAmount("");
-      setDescription("");
-      await fetchCashbox();
-      enqueueSnackbar("Movimiento registrado correctamente", { variant: "success" });
+      setAmount(""); setDescription("");
+      await Promise.all([fetchCashbox(), refetchMovimientos()]);
+      enqueueSnackbar("Movimiento registrado", { variant: "success" });
     } catch (err) {
       enqueueSnackbar(`Error: ${err.response?.data?.message || err.message}`, { variant: "error" });
     }
@@ -258,740 +223,795 @@ const Metrics = () => {
       enqueueSnackbar("Selecciona un turno válido", { variant: "error" });
       return;
     }
-
     try {
-      const corteRes = await axiosWrapper.get(`${API_URL}/api/shifts/${turnoSeleccionado}/corte`);
-      const corteData = corteRes.data;
-
-      const movimientosRes = await axiosWrapper.get(`${API_URL}/api/cash-register?shift_id=${turnoSeleccionado}`);
-      const movimientos = movimientosRes.data?.data || [];
-
+      const [corteRes, movRes] = await Promise.all([
+        axiosWrapper.get(`${API_URL}/api/shifts/${turnoSeleccionado}/corte`),
+        axiosWrapper.get(`${API_URL}/api/cash-register?shift_id=${turnoSeleccionado}`),
+      ]);
+      const d = corteRes.data;
       setCorteInfo({
         turnoId: turnoSeleccionado,
-        cajero: corteData.cajero || user?.name || "N/A",
-        inicio: corteData.inicio,
-        cierre: corteData.cierre || "En curso",
-        totalOrdenes: corteData.totalOrdenes || 0,
-        totalEfectivo: corteData.totalEfectivo || 0,
-        totalTarjeta: corteData.totalTarjeta || 0,
-        countEfectivo: corteData.countEfectivo || 0,
-        countTarjeta: corteData.countTarjeta || 0,
-        ordenesPagadas: corteData.ordenes || 0,
-        ingresos: corteData.ingresos || 0,
-        egresos: corteData.egresos || 0,
-        total: corteData.total || 0,
-        movimientos: movimientos.length,
+        cajero: d.cajero || user?.name || "N/A",
+        inicio: d.inicio, cierre: d.cierre || "En curso",
+        totalOrdenes: d.totalOrdenes || 0,
+        totalEfectivo: d.totalEfectivo || 0,
+        totalTarjeta: d.totalTarjeta || 0,
+        countEfectivo: d.countEfectivo || 0,
+        countTarjeta: d.countTarjeta || 0,
+        ordenesPagadas: d.ordenes || 0,
+        ingresos: d.ingresos || 0,
+        egresos: d.egresos || 0,
+        total: d.total || 0,
+        movimientos: (movRes.data?.data || []).length,
       });
-
       setShowCorteModal(true);
-      enqueueSnackbar("Corte generado correctamente", { variant: "success" });
+      enqueueSnackbar("Corte generado", { variant: "success" });
     } catch (err) {
-      console.error(err);
       enqueueSnackbar("Error al generar corte", { variant: "error" });
     }
   };
 
-  const { data: resData } = useQuery({
-    queryKey: ["orders"],
-    queryFn: () => axiosWrapper.get(`${API_URL}/api/cash-register`).then(res => res.data),
-    placeholderData: keepPreviousData,
-  });
-
-  const orders = resData?.data || [];
-
-  useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
-    setReportStartDate(today);
-    setReportEndDate(today);
-
-    Promise.all([
-      fetchCashbox(),
-      fetchCategories(),
-      fetchDishes(),
-      fetchTables(),
-      fetchUsers(),
-      fetchTurnos(),
-    ]);
-  }, []);
-
-  const filteredUsers = users.filter(user =>
-    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleDeleteUser = (userId) => {
-    setUserToDelete(userId);
-    setShowDeleteConfirm(true);
-  };
-
+  const handleDeleteUser = (userId) => { setUserToDelete(userId); setShowDeleteConfirm(true); };
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
     try {
       await axiosWrapper.delete(`/api/user/${userToDelete}`);
-      enqueueSnackbar("Usuario eliminado correctamente", { variant: "success" });
+      enqueueSnackbar("Usuario eliminado", { variant: "success" });
       fetchUsers();
     } catch (err) {
-      const msg = err.response?.data?.message || "No se pudo eliminar el usuario";
-      enqueueSnackbar(msg, { variant: "error" });
-    } finally {
-      setShowDeleteConfirm(false);
-      setUserToDelete(null);
-    }
+      enqueueSnackbar(err.response?.data?.message || "No se pudo eliminar", { variant: "error" });
+    } finally { setShowDeleteConfirm(false); setUserToDelete(null); }
   };
 
+  // ── Reportes ───────────────────────────────────────────────────────────────
+  const setQuickRange = (days) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    setReportStartDate(start.toISOString().split("T")[0]);
+    setReportEndDate(end.toISOString().split("T")[0]);
+  };
+
+  const generateReports = async () => {
+    if (!reportStartDate || !reportEndDate) {
+      enqueueSnackbar("Selecciona fechas válidas", { variant: "warning" });
+      return;
+    }
+    setLoadingReports(true);
+    try {
+      const p = `?start=${reportStartDate}&end=${reportEndDate}`;
+      const [sumRes, dishRes, payRes, waiterRes, hourRes, compRes, kitRes] = await Promise.all([
+        axiosWrapper.get(`${API_URL}/api/reports/sales-summary${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-dishes${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/payment-methods${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-waiters${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/sales-by-hour${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/comparison${p}`),
+        axiosWrapper.get(`${API_URL}/api/reports/top-kitchen-tips${p}`),
+      ]);
+      setSalesSummary(sumRes.data);
+      setTopDishes(dishRes.data?.top10 || []);
+      setPaymentMethods(payRes.data);
+      setTopWaiters(waiterRes.data?.top10 || []);
+      setSalesByHour(hourRes.data?.hours || []);
+      setComparison(compRes.data);
+      setTopKitchenTips(kitRes.data?.top10 || []);
+      setTotalKitchenTips(
+        (kitRes.data?.top10 || []).reduce((s, w) => s + parseFloat(w.kitchen_tips || 0), 0)
+      );
+      enqueueSnackbar("Reportes generados", { variant: "success" });
+    } catch (err) {
+      enqueueSnackbar("Error al cargar reportes", { variant: "error" });
+    } finally { setLoadingReports(false); }
+  };
+
+  const generateAIAnalysis = async () => {
+    if (!salesSummary) { enqueueSnackbar("Genera los reportes primero", { variant: "warning" }); return; }
+    setLoadingAI(true); setAiAnalysis("");
+    try {
+      const token = localStorage.getItem("token");
+      const headers = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await axiosWrapper.post(`${API_URL}/api/reports/ai-analysis`, {
+        salesSummary, topDishes, topWaiters, topKitchenTips, totalKitchenTips,
+        paymentMethods: paymentMethods || { cash: 0, card: 0, other: 0 },
+        salesByHour, comparison, start: reportStartDate, end: reportEndDate,
+      }, { timeout: 600000 });
+      setAiAnalysis(res.data?.analysis || "Análisis generado pero sin contenido.");
+      enqueueSnackbar("¡Análisis IA listo!", { variant: "success" });
+    } catch (err) {
+      enqueueSnackbar(err.response?.data?.message || err.message || "Error en análisis IA", { variant: "error" });
+    } finally { setLoadingAI(false); }
+  };
+
+  // ── Mount ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    setReportStartDate(today);
+    setReportEndDate(today);
+    Promise.all([fetchCashbox(), fetchCategories(), fetchDishes(), fetchTables(), fetchUsers(), fetchTurnos()]);
+  }, []);
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+  const filteredUsers = users.filter((u) => {
+    const matchSearch =
+      u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.role?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchRole = roleFilter === "all" || u.role?.toLowerCase() === roleFilter;
+    return matchSearch && matchRole;
+  });
+
+  const occupiedCount = tables.filter((t) => ["ocupado", "ocupada"].includes(t.status?.toLowerCase())).length;
+
+  // ── Tabs ────────────────────────────────────────────────────────────────────
   const tabs = [
-    { key: "cash", label: "Caja" },
-    { key: "menu", label: "Menú" },
-    { key: "users", label: "Usuarios" },
-    { key: "tables", label: "Mesas" },
-    { key: "reports", label: "Reportes & IA" },
+    { key: "cash",    label: "Caja",          icon: <MdPointOfSale size={16} /> },
+    { key: "menu",    label: "Menú",          icon: <BiSolidDish size={16} /> },
+    { key: "users",   label: "Usuarios",      icon: <FiUsers size={14} /> },
+    { key: "tables",  label: "Mesas",         icon: <MdTableRestaurant size={16} /> },
+    { key: "reports", label: "Reportes & IA", icon: <FiBarChart2 size={14} /> },
   ];
 
+  // ══════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6 py-12">
+    <div className="space-y-5">
 
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900">Panel de Administración</h1>
-              <p className="text-xl text-gray-600 mt-2">La Peña de Santiago</p>
-            </div>
-            <div className="text-right">
-              <p className="text-gray-500 text-sm">Saldo actual de caja</p>
-              <p className="text-5xl font-bold text-green-600">${Number(totalCash || 0).toFixed(2)}</p>
-            </div>
-          </div>
+      {/* ── RESUMEN RÁPIDO (siempre visible) ── */}
+      <motion.div
+        className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+        initial="hidden" animate="visible"
+        variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
+      >
+        <motion.div variants={fadeUp} custom={0}>
+          <StatCard label="Saldo Caja" value={`$${Number(totalCash).toFixed(2)}`} icon={<FiDollarSign />} color="emerald" />
+        </motion.div>
+        <motion.div variants={fadeUp} custom={1}>
+          <StatCard label="Ventas Hoy" value={`$${todayStats.sales.toFixed(2)}`} sub={`${todayStats.ordenes} órdenes`} icon={<FiTrendingUp />} color="indigo" />
+        </motion.div>
+        <motion.div variants={fadeUp} custom={2}>
+          <StatCard label="Mesas Activas" value={occupiedCount} sub={`de ${tables.length} total`} icon={<MdTableRestaurant />} color="violet" />
+        </motion.div>
+        <motion.div variants={fadeUp} custom={3}>
+          <StatCard label="Usuarios" value={users.length} sub={`${users.filter(u => u.role === "admin").length} admin`} icon={<FiUsers />} color="blue" />
+        </motion.div>
+      </motion.div>
+
+      {/* ── TABS ── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 overflow-x-auto">
+        <div className="flex gap-1 min-w-max sm:min-w-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm whitespace-nowrap transition-all ${
+                activeTab === tab.key
+                  ? "bg-indigo-600 text-white shadow-md"
+                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-800"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Tabs */}
-        <div className="bg-white rounded-2xl shadow-md p-2 mb-12">
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-8 py-4 rounded-xl font-semibold text-lg transition-all ${
-                  activeTab === tab.key
-                    ? "bg-indigo-600 text-white shadow-lg"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2 }}
+        >
 
-        {/* === CAJA === */}
-        {activeTab === "cash" && (
-          <div className="space-y-12">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <div className="bg-white rounded-2xl shadow-lg p-10">
-                <h3 className="text-2xl font-bold text-gray-900 mb-8">Registrar Movimiento</h3>
-                <div className="space-y-6">
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => setType("ingreso")}
-                      className={`flex-1 py-4 rounded-xl font-semibold transition ${
-                        type === "ingreso" 
-                          ? "bg-green-600 text-white shadow-md" 
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      Ingreso
-                    </button>
-                    <button
-                      onClick={() => setType("retiro")}
-                      className={`flex-1 py-4 rounded-xl font-semibold transition ${
-                        type === "retiro" 
-                          ? "bg-red-600 text-white shadow-md" 
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      Retiro
-                    </button>
-                  </div>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="Monto"
-                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Descripción (opcional)"
-                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                  <button
-                    onClick={handleSubmit}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105"
-                  >
-                    Registrar Movimiento
-                  </button>
+          {/* ══ CAJA ══════════════════════════════════════════════════════════ */}
+          {activeTab === "cash" && (
+            <div className="space-y-5">
+
+              {/* Stats de hoy */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col items-center text-center">
+                  <BsCashStack className="text-emerald-500 text-2xl mb-1" />
+                  <p className="text-xs text-gray-400 font-medium">Efectivo Hoy</p>
+                  <p className="text-xl font-black text-emerald-700">${(todayStats.sales).toFixed(2)}</p>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col items-center text-center">
+                  <FiTrendingUp className="text-indigo-500 text-2xl mb-1" />
+                  <p className="text-xs text-gray-400 font-medium">Ingresos</p>
+                  <p className="text-xl font-black text-indigo-700">${todayStats.ingresos.toFixed(2)}</p>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col items-center text-center">
+                  <FiTrendingUp className="text-red-400 text-2xl mb-1 rotate-180" />
+                  <p className="text-xs text-gray-400 font-medium">Retiros</p>
+                  <p className="text-xl font-black text-red-600">${todayStats.retiros.toFixed(2)}</p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-lg p-10">
-                <h3 className="text-2xl font-bold text-gray-900 mb-8">Corte de Caja por Turno</h3>
-                <div className="space-y-6">
-                  <select
-                    value={turnoSeleccionado}
-                    onChange={(e) => setTurnoSeleccionado(e.target.value)}
-                    className="w-full px-6 py-5 border border-gray-300 rounded-xl text-xl focus:ring-4 focus:ring-indigo-500"
-                  >
-                    <option value="">-- Selecciona turno --</option>
-                    {turnos.map((turno) => (
-                      <option key={turno.id} value={turno.id}>
-                        Turno #{turno.id} - {formatDateAndTime(turno.start_time)}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={handleCorte}
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-5 rounded-xl shadow-lg transition transform hover:scale-105"
-                  >
-                    Generar Corte
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-lg p-10">
-              <h3 className="text-2xl font-bold text-gray-900 mb-8">Últimos Movimientos</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b-2 border-gray-200">
-                    <tr>
-                      <th className="text-left py-4 text-gray-600 font-medium">Order ID</th>
-                      <th className="text-left py-4 text-gray-600 font-medium">Mesero</th>
-                      <th className="text-left py-4 text-gray-600 font-medium">Fecha</th>
-                      <th className="text-left py-4 text-gray-600 font-medium">Descripción</th>
-                      <th className="text-right py-4 text-gray-600 font-medium">Total</th>
-                      <th className="text-left py-4 text-gray-600 font-medium">Pago</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((order) => (
-                      <tr key={order.id} className="border-b border-gray-100">
-                        <td className="py-6">#{order.id}</td>
-                        <td className="py-6">{order.waiter_name || "N/A"}</td>
-                        <td className="py-6">{order.date ? formatDateAndTime(order.date) : "N/A"}</td>
-                        <td className="py-6">{order.description || "N/A"}</td>
-                        <td className={`py-6 text-right font-bold ${order.type === "ingreso" ? "text-green-600" : "text-red-600"}`}>
-                          ${Number(order.amount || 0).toFixed(2)}
-                        </td>
-                        <td className="py-6">
-                          <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                            order.payment_method === "efectivo" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-                          }`}>
-                            {order.payment_method || "N/D"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* === MENÚ === */}
-        {activeTab === "menu" && (
-          <div className="space-y-12">
-            <div className="bg-white rounded-2xl shadow-lg p-10">
-              <div className="flex justify-between items-center mb-10">
-                <h2 className="text-3xl font-bold text-gray-900">Categorías del Menú</h2>
-                <button
-                  onClick={() => setIsCategoryModalOpen(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4"
-                >
-                  Nueva Categoría <MdCategory className="text-2xl" />
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
-                {categories.map((cat) => (
-                  <div key={cat.id} className="bg-gray-50 rounded-2xl overflow-hidden hover:shadow-xl transition">
-                    <div className="h-3" style={{ backgroundColor: cat.bg_color || "#6366f1" }}></div>
-                    <div className="p-8">
-                      <div className="flex items-center gap-4 mb-6">
-                        <span className="text-5xl">{cat.icon}</span>
-                        <h3 className="text-2xl font-bold text-gray-900">{cat.name}</h3>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <p className="text-gray-600">
-                          {dishes.filter((d) => d.category_id === cat.id).length} platillos
-                        </p>
-                        <button
-                          onClick={() => setEditCategory(cat)}
-                          className="text-indigo-600 hover:text-indigo-700 font-medium"
-                        >
-                          Editar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-lg p-10">
-              <div className="flex justify-between items-center mb-10">
-                <h2 className="text-3xl font-bold text-gray-900">Platillos</h2>
-                <button
-                  onClick={() => setIsDishModalOpen(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105 flex items-center gap-4"
-                >
-                  Nuevo Platillo <BiSolidDish className="text-2xl" />
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b-2 border-gray-200">
-                    <tr>
-                      <th className="text-left py-6 text-gray-600 font-medium">Platillo</th>
-                      <th className="text-left py-6 text-gray-600 font-medium">Precio</th>
-                      <th className="text-left py-6 text-gray-600 font-medium">Categoría</th>
-                      <th className="text-left py-6 text-gray-600 font-medium">Estado</th>
-                      <th className="text-right py-6 text-gray-600 font-medium">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dishes.map((dish) => (
-                      <tr key={dish.id} className="border-b border-gray-100">
-                        <td className="py-8">
-                          <div className="flex items-center gap-6">
-                            <div className="h-20 w-20 bg-gray-200 border-2 border-dashed rounded-xl" />
-                            <div>
-                              <p className="text-xl font-semibold text-gray-900">{dish.name}</p>
-                              <p className="text-gray-600">{dish.description || "Sin descripción"}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-8 text-xl font-semibold">${dish.price}</td>
-                        <td className="py-8">{dish.category_name}</td>
-                        <td className="py-8">
-                          <span className="px-4 py-2 bg-green-100 text-green-800 rounded-full font-medium">Activo</span>
-                        </td>
-                        <td className="py-8 text-right">
-                          <button
-                            onClick={() => setEditDish(dish)}
-                            className="text-indigo-600 hover:text-indigo-700 font-medium mr-6"
-                          >
-                            Editar
-                          </button>
-                          <button className="text-red-600 hover:text-red-700 font-medium">
-                            Eliminar
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* === USUARIOS === */}
-        {activeTab === "users" && (
-          <div className="bg-white rounded-2xl shadow-lg p-10">
-            <div className="flex justify-between items-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900">Usuarios</h2>
-              <button
-                onClick={() => {
-                  setEditingUser(null);
-                  setIsAddUserOpen(true);
-                }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105"
-              >
-                Nuevo Usuario
-              </button>
-            </div>
-
-            <div className="mb-8">
-              <input
-                type="text"
-                placeholder="Buscar por nombre, email o rol..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full max-w-lg px-6 py-4 border border-gray-300 rounded-xl text-lg focus:ring-4 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b-2 border-gray-200">
-                  <tr>
-                    <th className="text-left py-6 text-gray-600 font-medium">Nombre</th>
-                    <th className="text-left py-6 text-gray-600 font-medium">Correo</th>
-                    <th className="text-left py-6 text-gray-600 font-medium">Teléfono</th>
-                    <th className="text-left py-6 text-gray-600 font-medium">Rol</th>
-                    <th className="text-right py-6 text-gray-600 font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((userItem) => (
-                    <tr key={userItem.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-8 text-lg">{userItem.name}</td>
-                      <td className="py-8">{userItem.email}</td>
-                      <td className="py-8">{userItem.phone || "—"}</td>
-                      <td className="py-8">
-                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                          userItem.role === "admin" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"
-                        }`}>
-                          {userItem.role}
-                        </span>
-                      </td>
-                      <td className="py-8 text-right space-x-6">
-                        <button
-                          onClick={() => {
-                            setEditingUser(userItem);
-                            setIsAddUserOpen(true);
-                          }}
-                          className="text-indigo-600 hover:text-indigo-700 font-medium"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(userItem.id)}
-                          className="text-red-600 hover:text-red-700 font-medium"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* === MESAS === */}
-        {activeTab === "tables" && (
-          <div className="bg-white rounded-2xl shadow-lg p-10">
-            <div className="flex justify-between items-center mb-10">
-              <h2 className="text-3xl font-bold text-gray-900">Mesas</h2>
-              <button
-                onClick={() => setIsTableModalOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition transform hover:scale-105"
-              >
-                Nueva Mesa
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b-2 border-gray-200">
-                  <tr>
-                    <th className="text-left py-6 text-gray-600 font-medium">Mesa</th>
-                    <th className="text-left py-6 text-gray-600 font-medium">Estatus</th>
-                    <th className="text-left py-6 text-gray-600 font-medium">Asientos</th>
-                    <th className="text-right py-6 text-gray-600 font-medium">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((table) => (
-                    <tr key={table.id} className="border-b border-gray-100">
-                      <td className="py-8 text-xl font-semibold">Mesa {table.table_no}</td>
-                      <td className="py-8">
-                        <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                          table.status === "ocupada" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
-                        }`}>
-                          {table.status}
-                        </span>
-                      </td>
-                      <td className="py-8">{table.seats} personas</td>
-                      <td className="py-8 text-right">
-                        <button
-                          onClick={() => setEditTable(table)}
-                          className="text-indigo-600 hover:text-indigo-700 font-medium mr-6"
-                        >
-                          Editar
-                        </button>
-                        <button className="text-red-600 hover:text-red-700 font-medium">
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* === REPORTES & IA === */}
-        {activeTab === "reports" && (
-          <div className="space-y-16">
-            {/* Filtros */}
-            <div className="bg-white rounded-2xl shadow-lg p-10">
-              <h2 className="text-3xl font-bold text-gray-900 mb-8">Filtros de Reporte</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div>
-                  <label className="block text-lg font-medium text-gray-700 mb-3">Desde</label>
-                  <input
-                    type="date"
-                    value={reportStartDate}
-                    onChange={(e) => setReportStartDate(e.target.value)}
-                    className="w-full px-6 py-4 border border-gray-300 rounded-xl text-lg focus:ring-4 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-lg font-medium text-gray-700 mb-3">Hasta</label>
-                  <input
-                    type="date"
-                    value={reportEndDate}
-                    onChange={(e) => setReportEndDate(e.target.value)}
-                    className="w-full px-6 py-4 border border-gray-300 rounded-xl text-lg focus:ring-4 focus:ring-indigo-500"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    onClick={generateReports}
-                    disabled={loadingReports}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold py-4 px-10 rounded-xl shadow-lg transition"
-                  >
-                    {loadingReports ? "Generando..." : "Generar Reportes"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Resumen clave */}
-            {salesSummary && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
-                <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-10 rounded-2xl shadow-xl text-white">
-                  <p className="text-blue-200 text-lg mb-4">Ventas Totales</p>
-                  <p className="text-5xl font-extrabold">${salesSummary.totalSales.toFixed(0)}</p>
-                </div>
-                <div className="bg-gradient-to-br from-green-500 to-green-700 p-10 rounded-2xl shadow-xl text-white">
-                  <p className="text-green-200 text-lg mb-4">Órdenes</p>
-                  <p className="text-5xl font-extrabold">{salesSummary.totalOrders}</p>
-                </div>
-                <div className="bg-gradient-to-br from-purple-500 to-purple-700 p-10 rounded-2xl shadow-xl text-white">
-                  <p className="text-purple-200 text-lg mb-4">Ticket Promedio</p>
-                  <p className="text-5xl font-extrabold">${salesSummary.avgTicket.toFixed(0)}</p>
-                </div>
-                <div className="bg-gradient-to-br from-orange-500 to-orange-700 p-10 rounded-2xl shadow-xl text-white">
-                  <p className="text-orange-200 text-lg mb-4">Clientes</p>
-                  <p className="text-5xl font-extrabold">{salesSummary.totalCustomers}</p>
-                </div>
-                <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-10 rounded-2xl shadow-xl text-white">
-                  <p className="text-amber-200 text-lg mb-4">Propinas Cocina</p>
-                  <p className="text-5xl font-extrabold">${totalKitchenTips.toFixed(0)}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Análisis IA - Hero */}
-            {salesSummary && (
-              <div>
-                <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-3xl shadow-2xl overflow-hidden">
-                  <div className="p-12 lg:p-20">
-                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-10">
-                      <div>
-                        <h2 className="text-5xl font-bold text-white mb-6">
-                          Análisis Inteligente con IA
-                        </h2>
-                        <p className="text-2xl text-indigo-100 max-w-4xl">
-                          Tu asesor personal: insights profundos, alertas y recomendaciones accionables para hacer crecer tu restaurante.
-                        </p>
-                      </div>
-                      <button
-                        onClick={generateAIAnalysis}
-                        disabled={loadingAI}
-                        className="bg-white text-purple-700 hover:bg-gray-100 font-bold py-6 px-16 rounded-2xl shadow-2xl transition transform hover:scale-105 disabled:opacity-60 flex items-center gap-6 text-2xl"
-                      >
-                        {loadingAI ? (
-                          <>
-                            <div className="animate-spin rounded-full h-8 w-8 border-4 border-purple-700 border-t-transparent"></div>
-                            Analizando...
-                          </>
-                        ) : (
-                          "Generar Análisis IA"
-                        )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Registrar movimiento */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <MdPointOfSale className="text-indigo-600" /> Registrar Movimiento
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <button onClick={() => setType("ingreso")}
+                        className={`flex-1 py-3 rounded-xl font-semibold text-sm transition ${type === "ingreso" ? "bg-emerald-600 text-white shadow-md" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                        ↑ Ingreso
+                      </button>
+                      <button onClick={() => setType("retiro")}
+                        className={`flex-1 py-3 rounded-xl font-semibold text-sm transition ${type === "retiro" ? "bg-red-600 text-white shadow-md" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                        ↓ Retiro
                       </button>
                     </div>
+                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+                      placeholder="Monto ($)"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+                    <input type="text" value={description} onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Descripción (opcional)"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+                    <button onClick={handleSubmit}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition shadow-md">
+                      Registrar
+                    </button>
+                  </div>
+                </div>
 
-                    {loadingAI && !aiAnalysis && (
-                      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-20 text-center">
-                        <div className="animate-spin rounded-full h-32 w-32 border-8 border-white border-t-transparent mx-auto mb-10"></div>
-                        <p className="text-4xl text-white font-bold">Procesando tus datos con IA...</p>
-                        <p className="text-2xl text-indigo-100 mt-6">Esto puede tomar 1-4 minutos. ¡El resultado será increíble!</p>
-                      </div>
-                    )}
+                {/* Corte de caja */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <FiDollarSign className="text-violet-600" /> Corte de Caja por Turno
+                  </h3>
+                  <div className="space-y-3">
+                    <select value={turnoSeleccionado} onChange={(e) => setTurnoSeleccionado(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 outline-none">
+                      <option value="">-- Selecciona un turno --</option>
+                      {turnos.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          Turno #{t.id} — {t.start_time ? formatDateAndTime(t.start_time) : "Sin fecha"}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={handleCorte}
+                      className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 rounded-xl transition shadow-md">
+                      Generar Corte
+                    </button>
+                  </div>
+                  {turnos.length === 0 && (
+                    <p className="text-gray-400 text-xs mt-3 text-center">No hay turnos registrados</p>
+                  )}
+                </div>
+              </div>
 
-                    {aiAnalysis && (
-                      <div className="bg-white rounded-3xl p-12 lg:p-20 shadow-3xl">
-                        <div className="prose prose-2xl max-w-none text-gray-800">
-                          <div className="whitespace-pre-line leading-relaxed text-xl font-medium">
-                            {aiAnalysis}
+              {/* Tabla de movimientos */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex justify-between items-center px-5 py-4 border-b border-gray-50">
+                  <h3 className="font-bold text-gray-900">Movimientos Recientes</h3>
+                  <button onClick={() => refetchMovimientos()}
+                    className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 text-sm font-medium">
+                    <FiRefreshCw size={13} className={movLoading ? "animate-spin" : ""} />
+                    Actualizar
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[600px]">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">ID</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Mesero</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Fecha</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Descripción</th>
+                        <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Monto</th>
+                        <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pago</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {movements.slice(0, 30).map((m) => (
+                        <tr key={m.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3 text-sm text-gray-500">#{m.id}</td>
+                          <td className="px-5 py-3 text-sm font-medium text-gray-700">{m.waiter_name || "—"}</td>
+                          <td className="px-5 py-3 text-sm text-gray-500">{m.date ? formatDateAndTime(m.date) : "—"}</td>
+                          <td className="px-5 py-3 text-sm text-gray-600 max-w-[180px] truncate">{m.description || "—"}</td>
+                          <td className={`px-5 py-3 text-sm font-bold text-right ${m.type === "retiro" ? "text-red-600" : "text-emerald-700"}`}>
+                            {m.type === "retiro" ? "-" : "+"}${Number(m.amount || 0).toFixed(2)}
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              m.payment_method === "tarjeta" || m.payment_method === "card"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-emerald-100 text-emerald-700"
+                            }`}>
+                              {m.payment_method || "efectivo"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {movements.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-10 text-center text-gray-400 text-sm">
+                            No hay movimientos registrados
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MENÚ ════════════════════════════════════════════════════════ */}
+          {activeTab === "menu" && (
+            <div className="space-y-5">
+              {/* Categorías */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <MdCategory className="text-indigo-600" /> Categorías ({categories.length})
+                  </h2>
+                  <button onClick={() => setIsCategoryModalOpen(true)}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-3 py-2 rounded-xl transition">
+                    <FiPlus size={14} /> Nueva
+                  </button>
+                </div>
+                {categories.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center py-8">Sin categorías registradas</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {categories.map((cat) => (
+                      <div key={cat.id} className="bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 hover:shadow-md transition">
+                        <div className="h-1.5 w-full" style={{ backgroundColor: cat.bg_color || "#6366f1" }} />
+                        <div className="p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-2xl">{cat.icon}</span>
+                            <h3 className="text-sm font-bold text-gray-900 truncate">{cat.name}</h3>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <p className="text-xs text-gray-500">
+                              {dishes.filter((d) => d.category_id === cat.id).length} platillos
+                            </p>
+                            <button onClick={() => setEditCategory(cat)}
+                              className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold">
+                              Editar
+                            </button>
                           </div>
                         </div>
-                        <div className="mt-12 pt-10 border-t-2 border-gray-200 flex justify-end">
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(aiAnalysis);
-                              enqueueSnackbar("Análisis copiado al portapapeles", { variant: "success" });
-                            }}
-                            className="px-10 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-2xl font-bold text-xl shadow-xl transition"
-                          >
-                            Copiar Análisis Completo
-                          </button>
-                        </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Platillos */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex justify-between items-center px-5 py-4 border-b border-gray-50">
+                  <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                    <BiSolidDish className="text-indigo-600" /> Platillos ({dishes.length})
+                  </h2>
+                  <button onClick={() => setIsDishModalOpen(true)}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-3 py-2 rounded-xl transition">
+                    <FiPlus size={14} /> Nuevo
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px]">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-16">Img</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Platillo</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Precio</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Categoría</th>
+                        <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {dishes.map((dish) => (
+                        <tr key={dish.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3">
+                            {dish.image_url ? (
+                              <img src={`${API_URL}${dish.image_url}`} alt={dish.name}
+                                className="w-12 h-12 object-cover rounded-xl border border-gray-200"
+                                onError={(e) => { e.target.style.display = "none"; }} />
+                            ) : (
+                              <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-gray-300 border border-dashed border-gray-200">
+                                <BiSolidDish size={18} />
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <p className="text-sm font-semibold text-gray-900">{dish.name}</p>
+                            {dish.description && (
+                              <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-[200px]">{dish.description}</p>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-sm font-bold text-emerald-700">
+                            ${Number(dish.price).toFixed(2)}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">{dish.category_name || "—"}</td>
+                          <td className="px-5 py-3 text-right">
+                            <button onClick={() => setEditDish(dish)}
+                              className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold mr-4">
+                              Editar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {dishes.length === 0 && (
+                        <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-400 text-sm">Sin platillos</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ══ USUARIOS ════════════════════════════════════════════════════ */}
+          {activeTab === "users" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex justify-between items-center px-5 py-4 border-b border-gray-50">
+                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <FiUsers className="text-indigo-600" /> Usuarios ({filteredUsers.length})
+                </h2>
+                <button onClick={() => { setEditingUser(null); setIsAddUserOpen(true); }}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-3 py-2 rounded-xl transition">
+                  <FiPlus size={14} /> Nuevo
+                </button>
+              </div>
+
+              {/* Filtros */}
+              <div className="px-5 py-3 border-b border-gray-50 flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input type="text" placeholder="Buscar por nombre, email o rol..."
+                    value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+                </div>
+                <div className="flex gap-1.5">
+                  {["all", "admin", "cajero", "mesero"].map((r) => (
+                    <button key={r} onClick={() => setRoleFilter(r)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                        roleFilter === r ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}>
+                      {r === "all" ? "Todos" : r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Usuario</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Rol</th>
+                      <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredUsers.map((u) => (
+                      <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                              {(u.name || "?")[0].toUpperCase()}
+                            </div>
+                            <span className="text-sm font-semibold text-gray-800">{u.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-sm text-gray-500">{u.email}</td>
+                        <td className="px-5 py-3"><RoleBadge role={u.role} /></td>
+                        <td className="px-5 py-3 text-right">
+                          <button onClick={() => { setEditingUser(u); setIsAddUserOpen(true); }}
+                            className="text-indigo-600 hover:text-indigo-800 mr-3">
+                            <FiEdit2 size={14} />
+                          </button>
+                          <button onClick={() => handleDeleteUser(u.id)}
+                            className="text-red-500 hover:text-red-700">
+                            <FiTrash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredUsers.length === 0 && (
+                      <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400 text-sm">No hay usuarios que coincidan</td></tr>
                     )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ══ MESAS ═══════════════════════════════════════════════════════ */}
+          {activeTab === "tables" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex justify-between items-center px-5 py-4 border-b border-gray-50">
+                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <MdTableRestaurant className="text-indigo-600" /> Mesas ({tables.length})
+                </h2>
+                <button onClick={() => setIsTableModalOpen(true)}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-3 py-2 rounded-xl transition">
+                  <FiPlus size={14} /> Nueva Mesa
+                </button>
+              </div>
+              {tables.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-12">Sin mesas registradas</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 p-5">
+                  {tables.map((t) => {
+                    const isOc = ["ocupado", "ocupada"].includes(t.status?.toLowerCase());
+                    return (
+                      <div key={t.id}
+                        className={`rounded-2xl p-4 border-2 transition text-center ${
+                          isOc ? "bg-orange-50 border-orange-300" : "bg-emerald-50 border-emerald-200"
+                        }`}>
+                        <div className={`w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center font-black text-lg ${
+                          isOc ? "bg-orange-500 text-white" : "bg-emerald-500 text-white"
+                        }`}>
+                          {t.table_no}
+                        </div>
+                        <p className="text-xs font-semibold text-gray-700">{t.seats} asientos</p>
+                        <span className={`mt-1.5 inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isOc ? "bg-orange-100 text-orange-800" : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {isOc ? "Ocupada" : "Libre"}
+                        </span>
+                        <button onClick={() => setEditTable(t)}
+                          className="block w-full mt-2 text-indigo-600 hover:text-indigo-800 text-xs font-semibold">
+                          Editar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ REPORTES & IA ═══════════════════════════════════════════════ */}
+          {activeTab === "reports" && (
+            <div className="space-y-5">
+              {/* Filtros de fecha */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <FiBarChart2 className="text-indigo-600" /> Filtros de Reporte
+                </h2>
+                {/* Quick buttons */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {[
+                    { label: "Hoy",      days: 1  },
+                    { label: "7 días",   days: 7  },
+                    { label: "15 días",  days: 15 },
+                    { label: "30 días",  days: 30 },
+                  ].map((q) => (
+                    <button key={q.label} onClick={() => setQuickRange(q.days)}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition">
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Desde</label>
+                    <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5">Hasta</label>
+                    <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 outline-none" />
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={generateReports} disabled={loadingReports}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold py-2.5 rounded-xl transition">
+                      {loadingReports ? "Generando..." : "Generar Reportes"}
+                    </button>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Gráficos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              {topDishes.length > 0 && (
-                <div className="bg-white rounded-3xl shadow-lg p-12">
-                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Top Platillos Más Vendidos</h3>
-                  <Bar
-                    data={{
-                      labels: topDishes.map(d => d.name.length > 20 ? d.name.substring(0, 20) + "..." : d.name),
-                      datasets: [{
-                        data: topDishes.map(d => d.total_sales),
-                        backgroundColor: "#6366f1",
-                        borderRadius: 12,
-                      }]
-                    }}
-                    options={{
-                      responsive: true,
-                      plugins: { legend: { display: false } },
-                      scales: { y: { beginAtZero: true } }
-                    }}
-                  />
+              {/* Métricas clave */}
+              {salesSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  <StatCard label="Ventas Totales"  value={`$${salesSummary.totalSales?.toFixed(0)}`}  color="indigo" icon={<FiDollarSign />} />
+                  <StatCard label="Órdenes"          value={salesSummary.totalOrders}                   color="blue"   icon={<FiTrendingUp />} />
+                  <StatCard label="Ticket Promedio"  value={`$${salesSummary.avgTicket?.toFixed(0)}`}   color="violet" icon={<FiBarChart2 />} />
+                  <StatCard label="Clientes"          value={salesSummary.totalCustomers}                color="amber"  icon={<FiUsers />} />
+                  <StatCard label="Propinas Cocina"  value={`$${totalKitchenTips.toFixed(0)}`}          color="emerald" icon={<FiDollarSign />} />
                 </div>
               )}
 
-              {topWaiters.length > 0 && (
-                <div className="bg-white rounded-3xl shadow-lg p-12">
-                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Top Meseros por Ventas</h3>
-                  <Bar
-                    data={{
-                      labels: topWaiters.map(w => w.name.length > 20 ? w.name.substring(0, 20) + "..." : w.name),
-                      datasets: [{
-                        data: topWaiters.map(w => w.total_sales),
-                        backgroundColor: "#10b981",
-                        borderRadius: 12,
-                      }]
-                    }}
-                    options={{
-                      responsive: true,
-                      plugins: { legend: { display: false } },
-                      scales: { y: { beginAtZero: true } }
-                    }}
-                  />
-                </div>
-              )}
-
-              {salesByHour.length > 0 && (
-                <div className="bg-white rounded-3xl shadow-lg p-12">
-                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Ventas por Hora</h3>
-                  <Line
-                    data={{
-                      labels: salesByHour.map(h => `${h.hour}:00`),
-                      datasets: [{
-                        data: salesByHour.map(h => h.total_sales),
-                        borderColor: "#f59e0b",
-                        backgroundColor: "rgba(245, 158, 11, 0.1)",
-                        tension: 0.4,
-                        fill: true,
-                      }]
-                    }}
-                    options={{
-                      responsive: true,
-                      plugins: { legend: { display: false } },
-                      scales: { y: { beginAtZero: true } }
-                    }}
-                  />
-                </div>
-              )}
-
-              {paymentMethods && (
-                <div className="bg-white rounded-3xl shadow-lg p-12">
-                  <h3 className="text-3xl font-bold text-gray-900 mb-10">Métodos de Pago</h3>
-                  <div className="max-w-md mx-auto">
-                    <Pie
-                      data={{
-                        labels: ["Efectivo", "Tarjeta", "Otros"],
-                        datasets: [{
-                          data: [paymentMethods.cash, paymentMethods.card, paymentMethods.other],
-                          backgroundColor: ["#10b981", "#3b82f6", "#f59e0b"],
-                        }]
-                      }}
-                      options={{ responsive: true }}
-                    />
+              {/* Comparación período */}
+              {comparison && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="text-sm font-bold text-gray-900 mb-3">Comparación con período anterior</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-center">
+                    {[
+                      { label: "Ventas", curr: comparison.current?.totalSales, prev: comparison.previous?.totalSales },
+                      { label: "Órdenes", curr: comparison.current?.totalOrders, prev: comparison.previous?.totalOrders },
+                      { label: "Ticket Prom.", curr: comparison.current?.avgTicket, prev: comparison.previous?.avgTicket },
+                    ].map(({ label, curr, prev }) => {
+                      const pct = prev > 0 ? ((curr - prev) / prev * 100).toFixed(1) : null;
+                      return (
+                        <div key={label} className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs text-gray-400 font-medium">{label}</p>
+                          <p className="text-lg font-black text-gray-900">
+                            {typeof curr === "number" ? (label === "Órdenes" ? curr : `$${curr?.toFixed(0)}`) : "—"}
+                          </p>
+                          {pct !== null && (
+                            <p className={`text-xs font-bold mt-0.5 ${Number(pct) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                              {Number(pct) >= 0 ? "▲" : "▼"} {Math.abs(pct)}%
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
-            </div>
-          </div>
-        )}
 
-        {/* Modales */}
-        {isCategoryModalOpen && <AddCategoryModal setIsOpen={setIsCategoryModalOpen} onClose={() => fetchCategories()} />}
-        {editCategory && <AddCategoryModal setIsOpen={() => setEditCategory(null)} initialData={editCategory} isEditing />}
-        {isDishModalOpen && <AddDishModal setIsOpen={setIsDishModalOpen} onClose={() => fetchDishes()} />}
-        {editDish && <AddDishModal setIsOpen={() => setEditDish(null)} initialData={editDish} isEditing />}
-        {isTableModalOpen && <AddTableModal setIsOpen={setIsTableModalOpen} onTableAdded={() => fetchTables()} />}
-        {editTable && <AddTableModal setIsOpen={() => setEditTable(null)} initialData={editTable} isEditing />}
-        {isAddUserOpen && (
-          <AddUserModal
-            setIsOpen={setIsAddUserOpen}
-            onUserAdded={fetchUsers}
-            initialData={editingUser}
-          />
-        )}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
-              <div className="px-6 py-5 bg-red-50 border-b border-red-100">
-                <h3 className="text-xl font-semibold text-red-800">¿Eliminar usuario?</h3>
-              </div>
-              <div className="p-6">
-                <p className="text-gray-700 mb-6">Esta acción no se puede deshacer.</p>
-                <div className="flex justify-end gap-4">
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirm(false);
-                      setUserToDelete(null);
-                    }}
-                    className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-100 rounded-xl transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={confirmDeleteUser}
-                    className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow transition"
-                  >
-                    Sí, eliminar
-                  </button>
+              {/* IA */}
+              {salesSummary && (
+                <div className="bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 rounded-2xl p-6 shadow-xl">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+                    <div>
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <FaRobot /> Análisis con IA
+                      </h2>
+                      <p className="text-indigo-200 text-sm mt-1">Insights y recomendaciones para tu restaurante</p>
+                    </div>
+                    <button onClick={generateAIAnalysis} disabled={loadingAI}
+                      className="bg-white text-purple-700 hover:bg-gray-100 font-bold py-2.5 px-6 rounded-xl shadow-lg transition disabled:opacity-60 flex items-center gap-2 text-sm whitespace-nowrap">
+                      {loadingAI ? (
+                        <><div className="w-4 h-4 border-2 border-purple-700 border-t-transparent rounded-full animate-spin" />Analizando...</>
+                      ) : "Generar Análisis"}
+                    </button>
+                  </div>
+                  {loadingAI && !aiAnalysis && (
+                    <div className="bg-white/10 rounded-xl p-8 text-center">
+                      <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                      <p className="text-white font-bold">Procesando con IA...</p>
+                      <p className="text-indigo-200 text-sm mt-1">Puede tomar 1-4 minutos</p>
+                    </div>
+                  )}
+                  {aiAnalysis && (
+                    <div className="bg-white rounded-xl p-5 shadow">
+                      <div className="whitespace-pre-line text-sm text-gray-800 leading-relaxed">{aiAnalysis}</div>
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                        <button onClick={() => { navigator.clipboard.writeText(aiAnalysis); enqueueSnackbar("Copiado", { variant: "success" }); }}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition">
+                          Copiar análisis
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* Gráficos */}
+              {(topDishes.length > 0 || topWaiters.length > 0 || salesByHour.length > 0 || paymentMethods) && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  {topDishes.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                      <h3 className="text-sm font-bold text-gray-900 mb-4">Top Platillos Más Vendidos</h3>
+                      <Bar
+                        data={{
+                          labels: topDishes.map((d) => d.name.length > 20 ? d.name.slice(0, 20) + "…" : d.name),
+                          datasets: [{ data: topDishes.map((d) => d.total_sales), backgroundColor: "#6366f1", borderRadius: 8 }],
+                        }}
+                        options={{ responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }}
+                      />
+                    </div>
+                  )}
+                  {topWaiters.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                      <h3 className="text-sm font-bold text-gray-900 mb-4">Top Meseros por Ventas</h3>
+                      <Bar
+                        data={{
+                          labels: topWaiters.map((w) => w.name?.length > 20 ? w.name.slice(0, 20) + "…" : w.name),
+                          datasets: [{ data: topWaiters.map((w) => w.total_sales), backgroundColor: "#10b981", borderRadius: 8 }],
+                        }}
+                        options={{ responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }}
+                      />
+                    </div>
+                  )}
+                  {salesByHour.length > 0 && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                      <h3 className="text-sm font-bold text-gray-900 mb-4">Ventas por Hora</h3>
+                      <Line
+                        data={{
+                          labels: salesByHour.map((h) => `${h.hour}:00`),
+                          datasets: [{
+                            data: salesByHour.map((h) => h.total_sales),
+                            borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.1)",
+                            tension: 0.4, fill: true, borderWidth: 2, pointRadius: 3,
+                          }],
+                        }}
+                        options={{ responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }}
+                      />
+                    </div>
+                  )}
+                  {paymentMethods && (
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                      <h3 className="text-sm font-bold text-gray-900 mb-4">Métodos de Pago</h3>
+                      <div className="max-w-xs mx-auto">
+                        <Pie
+                          data={{
+                            labels: ["Efectivo", "Tarjeta", "Otros"],
+                            datasets: [{ data: [paymentMethods.cash, paymentMethods.card, paymentMethods.other], backgroundColor: ["#10b981", "#6366f1", "#f59e0b"] }],
+                          }}
+                          options={{ responsive: true }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+        </motion.div>
+      </AnimatePresence>
+
+      {/* ══ MODALES ══════════════════════════════════════════════════════════ */}
+      {isCategoryModalOpen && (
+        <AddCategoryModal setIsOpen={setIsCategoryModalOpen} onClose={fetchCategories} />
+      )}
+      {editCategory && (
+        <AddCategoryModal setIsOpen={() => setEditCategory(null)} initialData={editCategory} isEditing onClose={fetchCategories} />
+      )}
+      {isDishModalOpen && (
+        <AddDishModal setIsOpen={setIsDishModalOpen} onClose={fetchDishes} />
+      )}
+      {editDish && (
+        <AddDishModal setIsOpen={() => setEditDish(null)} initialData={editDish} isEditing onClose={fetchDishes} />
+      )}
+      {isTableModalOpen && (
+        <AddTableModal setIsOpen={setIsTableModalOpen} onTableAdded={fetchTables} />
+      )}
+      {editTable && (
+        <AddTableModal setIsOpen={() => setEditTable(null)} initialData={editTable} isEditing onTableAdded={fetchTables} />
+      )}
+      {isAddUserOpen && (
+        <AddUserModal setIsOpen={setIsAddUserOpen} onUserAdded={fetchUsers} initialData={editingUser} />
+      )}
+
+      {/* Confirmar eliminar usuario */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
+            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+            <div className="px-5 py-4 bg-red-50 border-b border-red-100">
+              <h3 className="text-base font-bold text-red-800">¿Eliminar usuario?</h3>
+            </div>
+            <div className="p-5">
+              <p className="text-gray-600 text-sm mb-5">Esta acción no se puede deshacer.</p>
+              <div className="flex gap-3">
+                <button onClick={() => { setShowDeleteConfirm(false); setUserToDelete(null); }}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+                  Cancelar
+                </button>
+                <button onClick={confirmDeleteUser}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition">
+                  Eliminar
+                </button>
               </div>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal corte */}
+      {showCorteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl">
+            <CorteTicket corte={corteInfo} onClose={() => setShowCorteModal(false)} ref={corteRef} />
           </div>
-        )}
-        {showCorteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl">
-              <CorteTicket corte={corteInfo} onClose={() => setShowCorteModal(false)} ref={corteRef} />
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -73,19 +73,19 @@ const Header = () => {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-gradient-to-r from-blue-700 to-blue-900 shadow-xl border-b border-blue-900">
+    <header className="sticky top-0 z-50 bg-gradient-to-r from-indigo-700 to-violet-800 shadow-xl border-b border-indigo-900">
       <div className="max-w-screen-2xl mx-auto px-6 lg:px-8">
         <div className="flex items-center justify-between h-18 py-3">
           <div onClick={() => navigate("/")} className="flex items-center gap-3 cursor-pointer group">
             <img src={logo} className="h-24 w-auto filter brightness-125 saturate-150 group-hover:scale-105 transition-transform duration-200" alt="Logo" />
-            <span className="text-white text-2xl font-extrabold tracking-tight group-hover:text-blue-200 transition-colors hidden sm:block"></span>
+            <span className="text-white text-2xl font-extrabold tracking-tight group-hover:text-indigo-200 transition-colors hidden sm:block"></span>
           </div>
 
           <div className="flex items-center space-x-4 lg:space-x-6">
             {userData.role === "admin" && (
               <button
                 onClick={() => navigate("/dashboard")}
-                className="p-3 rounded-full text-blue-200 hover:text-white hover:bg-blue-600 transition-colors duration-200 shadow-md flex items-center justify-center group"
+                className="p-3 rounded-full text-indigo-200 hover:text-white hover:bg-indigo-600 transition-colors duration-200 shadow-md flex items-center justify-center group"
                 title="Panel de Administración"
                 aria-label="Ir al Panel de Administración"
               >
@@ -107,7 +107,7 @@ const Header = () => {
             )}
 
             <button
-              className="p-3 rounded-full text-blue-200 hover:text-white hover:bg-blue-600 relative transition-colors duration-200 shadow-md flex items-center justify-center group"
+              className="p-3 rounded-full text-indigo-200 hover:text-white hover:bg-indigo-600 relative transition-colors duration-200 shadow-md flex items-center justify-center group"
               title="Notificaciones"
               aria-label="Ver Notificaciones"
             >
@@ -129,21 +129,21 @@ const Header = () => {
             <div className="relative" ref={dropdownRef}>
               <button
                 ref={userButtonRef}
-                className="flex items-center space-x-2 p-2 pr-3 rounded-full bg-blue-800 hover:bg-blue-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-md"
+                className="flex items-center space-x-2 p-2 pr-3 rounded-full bg-indigo-800 hover:bg-indigo-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-md"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 aria-expanded={isDropdownOpen}
                 aria-haspopup="true"
               >
-                <FaUserCircle className="text-3xl text-blue-300" />
+                <FaUserCircle className="text-3xl text-indigo-300" />
                 <div className="ml-2 text-left hidden lg:block">
                   <p className="text-sm font-semibold text-white truncate max-w-[120px]">
                     {userData.name || "Usuario"}
                   </p>
-                  <p className="text-xs text-blue-200 opacity-80 capitalize">
+                  <p className="text-xs text-indigo-200 opacity-80 capitalize">
                     {userData.role || "Rol"}
                   </p>
                 </div>
-                <FaChevronDown className={`text-blue-300 ml-2 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : "rotate-0"}`} />
+                <FaChevronDown className={`text-indigo-300 ml-2 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
 
               {isDropdownOpen && (

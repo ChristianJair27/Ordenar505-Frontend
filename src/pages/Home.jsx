@@ -1,516 +1,405 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import { motion } from "framer-motion";
-import { FiDollarSign, FiUser, FiCheckSquare } from "react-icons/fi";
+import { FiUser, FiClock } from "react-icons/fi";
 import { GiCookingPot } from "react-icons/gi";
-import { FaArrowRight, FaSignInAlt, FaSignOutAlt } from "react-icons/fa";
+import { BsCashStack } from "react-icons/bs";
+import { FaArrowRight, FaSignInAlt, FaSignOutAlt, FaCreditCard } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { axiosWrapper } from "../https/axiosWrapper";
 import { enqueueSnackbar } from "notistack";
 import { getTables } from "../https";
 
-const TIPS_PCT = 0.03;
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i = 0) => ({
+    opacity: 1, y: 0,
+    transition: { delay: i * 0.06, type: "spring", stiffness: 260, damping: 24 },
+  }),
+};
 
-// Animations
-const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } } };
-const buttonVariants = { hover: { scale: 1.03, boxShadow: "0px 10px 20px rgba(0,0,0,.1)" }, tap: { scale: 0.98 } };
-const itemVariants = { hidden: { y: 30, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { type: "spring", stiffness: 120, damping: 12 } } };
+const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.06 } } };
 
 const normalizeStatus = (raw) => {
   const s = String(raw ?? "").trim().toLowerCase();
-  if (new Set(["ocupado","ocupada","occupied","busy","en uso","en-uso","booked"]).has(s)) return "ocupado";
-  if (new Set(["libre","disponible","free","available","vacant"]).has(s)) return "libre";
-  if (new Set(["reservado","reservada","reserved","apartado"]).has(s)) return "reservado";
-  return "otro";
+  if (["ocupado", "ocupada", "occupied", "busy", "en uso", "en-uso", "booked"].includes(s)) return "ocupado";
+  return s;
+};
+
+/* Contador animado */
+const Counter = ({ value, decimals = 0 }) => {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (typeof value !== "number") return;
+    let frame, start = null;
+    const run = (ts) => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / 750, 1);
+      setN(value * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) frame = requestAnimationFrame(run);
+    };
+    frame = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{typeof value === "number" ? n.toFixed(decimals) : "—"}</>;
 };
 
 const Home = () => {
-  const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_BACKEND_URL;
-  const userData = useSelector((state) => state.user);
+  const navigate    = useNavigate();
+  const queryClient = useQueryClient();
+  const API_URL     = import.meta.env.VITE_BACKEND_URL;
+  const userData    = useSelector((s) => s.user);
 
-  // Normaliza rol y da poder total al admin
-  const role = String(userData?.role || userData?.user?.role || "").toLowerCase();
-  const isWaiter  = ["mesero", "waiter"].includes(role) || role === "admin"; // admin ve vista mesero
-  const isCashier = ["cajero", "cashier"].includes(role) || role === "admin"; // admin ve vista cajero
+  const role      = String(userData?.role || userData?.user?.role || "").toLowerCase();
+  const isWaiter  = ["mesero", "waiter"].includes(role);
+  const isCashier = ["cajero", "cashier"].includes(role) || role === "admin";
   const isAdmin   = role === "admin";
 
-  // Nombre del mesero actual (lo usaremos para filtrar)
-  const currentWaiterName = useMemo(() => {
-    const name = userData?.name || userData?.full_name || userData?.username || "";
-    const normalized = name.trim().toLowerCase();
-    console.log("Nombre del mesero logueado (para filtrar):", normalized || "(no encontrado)");
-    return normalized;
+  const waiterName = useMemo(() => {
+    const n = userData?.name || userData?.full_name || userData?.username || "";
+    return n.trim().toLowerCase();
   }, [userData]);
 
-  // Usa la misma ruta que OrderCard
-  const ORDER_DETAIL_ROUTE = (id) => `/orden/${id}`;
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t); }, []);
 
-  // Intenta extraer el id de orden desde la mesa (tolerante a varios nombres)
-  const extractOrderIdFromTable = (t = {}) =>
-    t.current_order_id ??
-    t.order_id ??
-    t.active_order_id ??
-    t.order?.id ??
-    t.order?._id ??
-    t.currentOrderId ??
-    t.activeOrderId ??
-    null;
+  const greeting = useMemo(() => {
+    const h = now.getHours();
+    return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+  }, [now]);
 
-  // Si no viene el id en la mesa, intenta pedirlo al backend
-  const fetchActiveOrderIdForTable = async (table) => {
-    const tableId = table?.table_id ?? table?.tableId ?? table?.id ?? table?.table_no ?? null;
-    if (!tableId) return null;
+  /* ── Helpers de orden ── */
+  const extractOid = (t = {}) =>
+    t.current_order_id ?? t.order_id ?? t.active_order_id ??
+    t.order?.id ?? t.order?._id ?? t.currentOrderId ?? t.activeOrderId ?? null;
 
+  const fetchOidForTable = async (table) => {
+    const tid = table?.table_id ?? table?.tableId ?? table?.id ?? table?.table_no ?? null;
+    if (!tid) return null;
     try {
-      // 1) endpoint directo si lo tienes (ajústalo a tu API real)
-      const r1 = await axiosWrapper.get(`${API_URL}/api/orders/active-by-table/${tableId}`);
-      const id1 = r1?.data?.data?.id ?? r1?.data?.id ?? null;
-      if (id1) return id1;
-    } catch (_) {}
-
+      const r = await axiosWrapper.get(`${API_URL}/api/orders/active-by-table/${tid}`);
+      return r?.data?.data?.id ?? r?.data?.id ?? null;
+    } catch {}
     try {
-      // 2) fallback genérico: buscar por query (ajusta los params al backend)
-      const r2 = await axiosWrapper.get(`${API_URL}/api/orders`, {
-        params: { table_id: tableId, status: 'inprogress', limit: 1, sort: 'desc' }
+      const r = await axiosWrapper.get(`${API_URL}/api/orders`, {
+        params: { table_id: tid, status: "inprogress", limit: 1, sort: "-created_at" },
       });
-      const arr = r2?.data?.data ?? r2?.data ?? [];
-      const first = Array.isArray(arr) ? arr[0] : null;
-      const id2 = first?.id ?? first?._id ?? null;
-      if (id2) return id2;
-    } catch (_) {}
-
-    return null;
+      const arr = r?.data?.data ?? r?.data ?? [];
+      return Array.isArray(arr) && arr[0] ? (arr[0].id ?? arr[0]._id ?? null) : null;
+    } catch { return null; }
   };
 
-  const openTableLikeOrdersCard = async (table) => {
-    // 1) intentar leerlo del objeto mesa
-    let orderId = extractOrderIdFromTable(table);
-
-    // 2) si no viene, intentar pedirlo al backend por mesa
-    if (!orderId) {
-      orderId = await fetchActiveOrderIdForTable(table);
-    }
-
-    if (orderId) {
-      navigate(ORDER_DETAIL_ROUTE(orderId));
-    } else {
-      enqueueSnackbar("No se encontró una orden activa para esta mesa.", { variant: "warning" });
-    }
+  const openTable = async (table) => {
+    let oid = extractOid(table);
+    if (!oid) oid = await fetchOidForTable(table);
+    if (oid) navigate(`/orden/${oid}`);
+    else enqueueSnackbar("No se encontró orden activa para esta mesa", { variant: "warning" });
   };
 
-  const openTable = (table) => {
-    const orderId = extractOrderIdFromTable(table);
-
-    if (orderId) {
-      navigate(ORDER_DETAIL_ROUTE(orderId));
-      return;
-    }
-
-    // Fallback opcional: si la mesa está ocupada pero no trae id,
-    // intenta navegar a Orders o muestra un aviso.
-    enqueueSnackbar("No se encontró una orden activa para esta mesa.", { variant: "warning" });
-    navigate('/orders');
-  };
-
-  // Mesas
+  /* ── Mesas ── */
   const {
-    data: tablesDataRaw = [],
-    isLoading: tablesLoading,
-    isError: tablesError,
+    data: rawTables = [], isLoading: tablesLoading, isError: tablesError, refetch: refetchTables,
   } = useQuery({
     queryKey: ["tablesHome"],
     queryFn: async () => {
-      const res = await getTables();
-      const rows =
-        Array.isArray(res) ? res :
-        Array.isArray(res?.data) ? res.data :
-        Array.isArray(res?.data?.data) ? res.data.data : [];
-      return rows;
+      const r = await getTables();
+      return Array.isArray(r) ? r : Array.isArray(r?.data) ? r.data : Array.isArray(r?.data?.data) ? r.data.data : [];
     },
-    refetchInterval: 15000, // más frecuente para ver cambios rápido
+    refetchInterval: 10_000, refetchIntervalInBackground: 30_000,
+    refetchOnWindowFocus: true, staleTime: 5_000,
   });
 
-  // Debug importante: vemos qué llega y cómo se filtra
-  useEffect(() => {
-    if (tablesDataRaw?.length > 0) {
-      console.log("=== DEBUG FILTRADO MESAS POR NOMBRE ===");
-      console.log("Mesero actual (nombre normalizado):", currentWaiterName || "(no encontrado)");
-      console.log("Total mesas recibidas del backend:", tablesDataRaw.length);
+  const myTables = useMemo(() => {
+    if (!rawTables?.length) return [];
+    if (isAdmin) return rawTables;
+    if (!waiterName) return [];
+    return rawTables.filter((t) =>
+      (t.waiter_name || t.name || "").trim().toLowerCase() === waiterName
+    );
+  }, [rawTables, isAdmin, waiterName]);
 
-      tablesDataRaw.forEach((t, index) => {
-        const mesaName = (t.waiter_name || t.name || "").trim().toLowerCase();
-        console.log(
-          `Mesa ${index + 1} (${t.table_no || "?"}) → mesero: "${mesaName}" | coincide con "${currentWaiterName}"? → ${mesaName === currentWaiterName}`
-        );
-      });
-    }
-  }, [tablesDataRaw, currentWaiterName]);
+  const activeTables = useMemo(() => myTables.filter((t) => normalizeStatus(t?.status) === "ocupado"), [myTables]);
 
-  // Filtrado REAL por nombre del mesero
-  const tablesData = useMemo(() => {
-    if (!tablesDataRaw?.length) return [];
-
-    // Admin ve TODO
-    if (isAdmin) {
-      console.log("Usuario es ADMIN → muestra TODAS las mesas");
-      return tablesDataRaw;
-    }
-
-    // Mesero normal → solo sus mesas
-    if (!currentWaiterName) {
-      console.warn("¡No se encontró el nombre del mesero actual! No se filtrará.");
-      return [];
-    }
-
-    return tablesDataRaw.filter((table) => {
-      const tableWaiter = (table.waiter_name || table.name || "").trim().toLowerCase();
-      return tableWaiter === currentWaiterName;
-    });
-  }, [tablesDataRaw, isAdmin, currentWaiterName]);
-
-  const OcupadoTables = useMemo(
-    () => tablesData.filter((t) => normalizeStatus(t?.status) === "ocupado"),
-    [tablesData]
-  );
-
-  // Stats del mesero (admin también)
-  const {
-    data: waiterStats,
-    isLoading: waiterStatsLoading,
-  } = useQuery({
+  /* ── Stats mesero (por DÍA) ── */
+  const statsQ = useQuery({
     queryKey: ["waiterTodayStats", userData?.id],
     queryFn: async () => {
-      const res = await axiosWrapper.get(`${API_URL}/api/waiter/today-stats?waiter_id=${userData.id}`);
-      return res?.data?.data ?? { orders_count: 0, revenue: 0 };
+      const r = await axiosWrapper.get(`${API_URL}/api/waiter/today-stats?waiter_id=${userData.id}`);
+      return r?.data?.data ?? { orders_count: 0, revenue: 0, kitchen_tips: 0, card_revenue: 0, cash_revenue: 0 };
     },
     enabled: (isWaiter || isAdmin) && !!userData?.id,
-    refetchInterval: 30000,
+    refetchInterval: 30_000,
+  });
+
+  /* ── Turno (cajero/admin) ── */
+  const turnoQ = useQuery({
+    queryKey: ["turnoActual"],
+    queryFn: async () => {
+      const r = await axiosWrapper.get(`${API_URL}/api/turno-actual`);
+      const d = r?.data?.data ?? {};
+      return {
+        turno_abierto: !!d.turno_abierto,
+        total_ventas:  Number(d.total_ventas  ?? 0),
+        total_ordenes: Number(d.total_ordenes ?? 0),
+        hora_inicio:   d.hora_inicio ?? null,
+      };
+    },
+    enabled: isCashier || isAdmin,
+    retry: 1, refetchInterval: 45_000,
+  });
+
+  const iniciarM = useMutation({
+    mutationFn: () => axiosWrapper.post(`${API_URL}/api/start`, {}, { withCredentials: true }),
+    onSuccess: () => { turnoQ.refetch(); enqueueSnackbar("Turno iniciado", { variant: "success" }); },
+    onError: (e) => enqueueSnackbar(`Error: ${e?.response?.data?.message || e.message}`, { variant: "error" }),
+  });
+  const cerrarM = useMutation({
+    mutationFn: () => axiosWrapper.post(`${API_URL}/api/end`, {}, { withCredentials: true }),
+    onSuccess: () => { turnoQ.refetch(); enqueueSnackbar("Turno cerrado", { variant: "success" }); },
+    onError: (e) => enqueueSnackbar(`Error: ${e?.response?.data?.message || e.message}`, { variant: "error" }),
   });
 
   useEffect(() => { document.title = "La Peña De Santiago | Panel"; }, []);
 
-  const formatValue = (value) => (typeof value === "number" ? `$${value.toFixed(2)}` : value);
+  /* ── Valores derivados del mesero ── */
+  const rev   = Number(statsQ.data?.revenue      ?? 0);
+  const tips  = Number(statsQ.data?.kitchen_tips ?? rev * 0.03);
+  const card  = Number(statsQ.data?.card_revenue ?? 0);
+  const cash  = Number(statsQ.data?.cash_revenue ?? 0);
+  const ords  = Number(statsQ.data?.orders_count ?? 0);
+  const loading = statsQ.isLoading;
 
-  // Turno (cajero + admin) — lee res.data.data y normaliza
-  const {
-    data: turnoData = { turno_abierto: false, total_ventas: 0, total_ordenes: 0, hora_inicio: null },
-    refetch,
-    isError: turnoError,
-    error,
-    isLoading,
-    isFetching
-  } = useQuery({
-    queryKey: ['turnoActual'],
-    queryFn: async () => {
-      const res = await axiosWrapper.get(`${API_URL}/api/turno-actual`);
-      const d = res?.data?.data ?? {};
-      return {
-        turno_abierto: !!d.turno_abierto,
-        total_ventas: Number(d.total_ventas ?? 0) || 0,
-        total_ordenes: Number(d.total_ordenes ?? 0) || 0,
-        hora_inicio: d.hora_inicio ?? null,
-        shift_id: d.shift_id ?? null,
-      };
-    },
-    enabled: isCashier || isAdmin || isWaiter,
-    retry: 1,
-    refetchInterval: 60000
-  });
+  const showMesas = !isCashier || turnoQ.data?.turno_abierto;
 
-  const iniciarTurnoMutation = useMutation({
-    mutationFn: () => axiosWrapper.post(`${API_URL}/api/start`, {}, { withCredentials: true }),
-    onSuccess: () => { refetch(); enqueueSnackbar("Turno iniciado con éxito.", { variant: "success" }); },
-    onError: (err) => enqueueSnackbar(`Error al iniciar turno: ${err.response?.data?.message || err.message}`, { variant: "error" })
-  });
-
-  const cerrarTurnoMutation = useMutation({
-    mutationFn: () => axiosWrapper.post(`${API_URL}/api/end`, {}, { withCredentials: true }),
-    onSuccess: () => { refetch(); enqueueSnackbar("Turno cerrado con éxito.", { variant: "success" }); },
-    onError: (err) => enqueueSnackbar(`Error al cerrar turno: ${err.response?.data?.message || err.message}`, { variant: "error" })
-  });
-
-  const {
-    data: waiterShiftStats,
-    isLoading: waiterShiftLoading,
-  } = useQuery({
-    queryKey: ["waiterShiftStats", userData?.id, turnoData?.shift_id],
-    queryFn: async () => {
-      if (!(isWaiter || isAdmin) || !userData?.id || !turnoData?.shift_id) {
-        return { orders_count: 0, revenue: 0, kitchen_tips: 0 };
-      }
-      const r = await axiosWrapper.get(`${API_URL}/api/waiter/shift-stats`, {
-        params: { waiter_id: userData.id, shift_id: turnoData.shift_id }
-      });
-      return r?.data?.data ?? { orders_count: 0, revenue: 0, kitchen_tips: 0 };
-    },
-    enabled: (isWaiter || isAdmin) && !!userData?.id && !!turnoData?.shift_id,
-    refetchInterval: 30000,
-  });
-
-  // Métricas (cajero/admin ven caja; mesero/admin ven personales)
-  const getMetrics = () => {
-    if (isCashier || isAdmin) {
-      const isShiftOpen = turnoData?.turno_abierto;
-      const totalVentas  = turnoData?.total_ventas || 0;
-      const totalOrdenes = turnoData?.total_ordenes || 0;
-      const horaInicio   = turnoData?.hora_inicio ? new Date(turnoData.hora_inicio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "N/A";
-      return [
-        {
-          title: "Estado del Turno",
-          value: isLoading ? "Cargando..." : (isShiftOpen ? "Abierto" : "Cerrado"),
-          icon: <FiUser className={isShiftOpen ? "text-blue-600" : "text-gray-500"} />,
-          color: isShiftOpen ? "bg-blue-50" : "bg-gray-50",
-          textColor: isShiftOpen ? "text-blue-800" : "text-gray-600",
-          action: () => {},
-          secondaryValue: isShiftOpen ? `Desde ${horaInicio}` : null,
-          isHighlight: true
-        },
-        {
-          title: "Ventas del Turno",
-          value: isLoading ? "..." : formatValue(totalVentas),
-          icon: <FiDollarSign className="text-green-600" />,
-          color: "bg-green-50",
-          textColor: "text-green-800",
-          action: () => navigate('/cashier-dashboard'),
-          isHighlight: false
-        },
-        {
-          title: "Órdenes del Turno",
-          value: isLoading ? "..." : totalOrdenes,
-          icon: <FiCheckSquare className="text-purple-600" />,
-          color: "bg-purple-50",
-          textColor: "text-purple-800",
-          action: () => navigate('/orders'),
-          isHighlight: false
-        }
-      ];
-    } else {
-      const revenueShift = isWaiter ? (waiterShiftStats?.revenue ?? 0) : 0;
-      const ordersCountShift = isWaiter ? (waiterShiftStats?.orders_count ?? 0) : 0;
-      const revenue = isWaiter ? (waiterStats?.revenue ?? 0) : 0;
-      const ordersCount = isWaiter ? (waiterStats?.orders_count ?? 0) : 0;
-      const kitchenTipsValue = isWaiter
-        ? (waiterShiftLoading ? "..." : formatValue((Number(revenueShift) || 0) * TIPS_PCT))
-        : formatValue(0);
-      return [
-        {
-          title: "Órdenes Hoy (yo)",
-          value: isWaiter ? (waiterStatsLoading ? "..." : ordersCount) : 0,
-          icon: <FiCheckSquare className="text-purple-600" />,
-          color: "bg-purple-50",
-          textColor: "text-purple-800",
-          action: () => navigate('/orders'),
-          isHighlight: false
-        },
-        {
-          title: "Ganancias Hoy (yo)",
-          value: isWaiter ? (waiterStatsLoading ? "..." : formatValue(revenue)) : formatValue(0),
-          icon: <FiDollarSign className="text-green-600" />,
-          color: "bg-green-50",
-          textColor: "text-green-800",
-          action: () => {},
-          isHighlight: false
-        },
-        {
-          title: "Propinas Cocina (3%)",
-          value: kitchenTipsValue,
-          icon: <GiCookingPot className="text-amber-600" />,
-          color: "bg-amber-50",
-          textColor: "text-amber-800",
-          action: () => {},
-          isHighlight: false
-        }
-      ];
-    }
+  /* ── Hora de la orden ── */
+  const orderTime = (t) => {
+    const raw = t.order_date ?? t.created_at ?? t.order_time ?? null;
+    if (!raw) return null;
+    return new Date(raw).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const metrics = getMetrics();
-
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
-      <main className="flex-1 overflow-auto p-6 md:p-8 lg:p-10">
-        <motion.div className="mb-8 text-center md:text-left" variants={itemVariants} initial="hidden" animate="visible">
-          <h1 className="text-4xl font-extrabold text-gray-900 mb-2">¡Hola, {userData.name || userData.role}!</h1>
-          <p className="text-gray-600 text-lg">Panel de control rápido para tu jornada.</p>
-        </motion.div>
+    <div className="flex flex-col min-h-screen bg-slate-50 pb-28">
 
-        {/* Alerta turno */}
-        {(turnoError || ((!turnoData?.turno_abierto) && (isCashier || isAdmin) && !isLoading && !isFetching)) && (
-          <motion.div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-lg shadow-md" role="alert" variants={itemVariants}>
-            <p className="font-bold">Estado del Turno</p>
-            <p>{error?.message || "No hay turno activo. Por favor, inicia tu turno."}</p>
-            {(isCashier || isAdmin) && (
-              <button
-                onClick={() => iniciarTurnoMutation.mutate()}
-                className="mt-3 bg-red-600 text-white px-4 py-2 rounded-lg shadow hover:bg-red-700 transition-colors font-medium text-sm flex items-center"
-                disabled={iniciarTurnoMutation.isLoading}
-              >
-                <FaSignInAlt className="mr-2" />
-                {iniciarTurnoMutation.isLoading ? "Iniciando..." : "Iniciar Turno"}
-              </button>
-            )}
-          </motion.div>
+      {/* ══ SALUDO COMPACTO ══ */}
+      <motion.div
+        className="bg-gradient-to-r from-indigo-700 to-violet-700 px-5 py-4 flex items-center justify-between"
+        initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}
+      >
+        <div>
+          <p className="text-indigo-200 text-[11px] font-medium capitalize">
+            {now.toLocaleDateString("es-NI", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <h1 className="text-white text-lg font-bold leading-tight">
+            {greeting}, <span className="text-indigo-200">{userData?.name || "Usuario"}</span>
+          </h1>
+        </div>
+        {activeTables.length > 0 && (
+          <div className="bg-white/15 text-white text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap">
+            {activeTables.length} mesa{activeTables.length !== 1 ? "s" : ""}
+          </div>
         )}
+      </motion.div>
 
-        {/* Botón cerrar turno */}
-        {(isCashier || isAdmin) && turnoData?.turno_abierto && (
-          <motion.div className="mb-8 flex justify-center" variants={itemVariants}>
-            <motion.button
-              onClick={() => cerrarTurnoMutation.mutate()}
-              className="bg-red-600 text-white px-8 py-4 rounded-xl shadow-lg hover:bg-red-700 transition-all duration-300 font-bold text-lg flex items-center justify-center"
-              disabled={cerrarTurnoMutation.isLoading}
-              whileHover="hover" whileTap="tap" variants={buttonVariants}
-            >
-              <FaSignOutAlt className="mr-3 text-2xl" />
-              {cerrarTurnoMutation.isLoading ? "Cerrando Turno..." : "Cerrar Turno"}
-            </motion.button>
-          </motion.div>
-        )}
+      <main className="flex-1 px-4 pt-3 space-y-3">
 
-        <h2 className="text-2xl font-bold text-gray-800 mb-5">Resumen de Hoy</h2>
-        <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10" variants={containerVariants} initial="hidden" animate="visible">
-          {isLoading && (isCashier || isAdmin) ? (
-            <>
-              {[1,2,3].map(i => (
-                <div key={i} className="bg-white rounded-xl shadow-lg p-6 flex items-center space-x-4 animate-pulse border border-gray-100">
-                  <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-6 bg-gray-300 rounded w-1/2"></div>
-                  </div>
-                </div>
-              ))}
-            </>
-          ) : (
-            metrics.map((metric, index) => (
-              <motion.div
-                key={index}
-                className={`p-6 rounded-2xl shadow-lg border border-gray-200 cursor-pointer transition-transform duration-300 ease-in-out flex flex-col items-center text-center justify-center
-                  ${metric.color} ${metric.textColor} ${metric.isHighlight ? "ring-2 ring-blue-500 transform scale-105" : ""}`}
-                onClick={metric.action}
-                variants={itemVariants} whileHover="hover" whileTap="tap" initial="hidden" animate="visible"
-              >
-                <div className={`p-4 rounded-full mb-3 text-4xl`}>{metric.icon}</div>
-                <h3 className="text-lg font-semibold mb-1">{metric.title}</h3>
-                <p className="text-4xl font-extrabold mb-1">{metric.value}</p>
-                {metric.secondaryValue && <p className="text-sm opacity-80">{metric.secondaryValue}</p>}
+        {/* ══ CAJERO/ADMIN: alertas de turno ══ */}
+        {(isCashier || isAdmin) && (
+          <>
+            {(turnoQ.isError || (!turnoQ.data?.turno_abierto && !turnoQ.isLoading)) && (
+              <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
+                className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <p className="font-bold text-red-700 text-sm">Sin turno activo</p>
+                <p className="text-red-500 text-xs mt-0.5">{turnoQ.error?.message || "Inicia tu turno para comenzar."}</p>
+                <button onClick={() => iniciarM.mutate()} disabled={iniciarM.isPending}
+                  className="mt-2 bg-red-600 text-white px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 hover:bg-red-700 transition disabled:opacity-60">
+                  <FaSignInAlt size={11} />
+                  {iniciarM.isPending ? "Iniciando..." : "Iniciar Turno"}
+                </button>
               </motion.div>
-            ))
-          )}
-        </motion.div>
+            )}
+            {turnoQ.data?.turno_abierto && (
+              <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible" className="flex justify-end">
+                <motion.button onClick={() => cerrarM.mutate()} disabled={cerrarM.isPending}
+                  className="bg-red-600 text-white px-4 py-2.5 rounded-2xl shadow-md font-bold text-sm flex items-center gap-2 hover:bg-red-700 transition disabled:opacity-60"
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}>
+                  <FaSignOutAlt size={13} />
+                  {cerrarM.isPending ? "Cerrando..." : "Cerrar Turno"}
+                </motion.button>
+              </motion.div>
+            )}
+          </>
+        )}
 
-        {/* Mesas Activas */}
-        {(!isCashier || turnoData?.turno_abierto) ? (
-          <motion.div 
-            className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100/80 backdrop-blur-sm"
-            variants={itemVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                Mesas Activas
-                {!isAdmin && (
-                  <span className="text-base font-normal text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-                    Solo mis mesas
+        {/* ══ MESERO: stats del día ══ */}
+        {isWaiter && !isCashier && (
+          <motion.div custom={0} variants={fadeUp} initial="hidden" animate="visible"
+            className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+
+            {/* Fila principal: total y órdenes */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+              <div>
+                <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide">Ganancias hoy</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-gray-400 text-xl font-bold">$</span>
+                  <span className="text-gray-900 text-5xl font-black leading-none">
+                    {loading ? <span className="text-gray-200 animate-pulse">—</span> : <Counter value={rev} decimals={2} />}
                   </span>
-                )}
-              </h2>
-              <motion.button
-                onClick={() => navigate('/orders')}
-                className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-                whileHover={{ x: 4 }}
-              >
-                Ver todas <FaArrowRight size={16} />
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide">Órdenes</p>
+                <p className="text-gray-900 text-4xl font-black mt-1">
+                  {loading ? "—" : ords}
+                </p>
+              </div>
+            </div>
+
+            {/* Fila secundaria: propinas | efectivo | tarjeta */}
+            <div className="grid grid-cols-3 divide-x divide-gray-100">
+              <div className="flex flex-col items-center py-4 px-3 gap-1">
+                <GiCookingPot className="text-amber-500 text-xl mb-0.5" />
+                <p className="text-xs text-gray-400 font-medium">Propinas</p>
+                <p className="text-base font-bold text-amber-700">
+                  {loading ? "—" : `$${tips.toFixed(2)}`}
+                </p>
+                <p className="text-[10px] text-gray-300">3% cocina</p>
+              </div>
+              <div className="flex flex-col items-center py-4 px-3 gap-1">
+                <BsCashStack className="text-emerald-500 text-xl mb-0.5" />
+                <p className="text-xs text-gray-400 font-medium">Efectivo</p>
+                <p className="text-base font-bold text-emerald-700">
+                  {loading ? "—" : `$${cash.toFixed(2)}`}
+                </p>
+              </div>
+              <div className="flex flex-col items-center py-4 px-3 gap-1">
+                <FaCreditCard className="text-blue-500 text-xl mb-0.5" />
+                <p className="text-xs text-gray-400 font-medium">Tarjeta</p>
+                <p className="text-base font-bold text-blue-700">
+                  {loading ? "—" : `$${card.toFixed(2)}`}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ══ CAJERO/ADMIN: métricas de turno ══ */}
+        {(isCashier || isAdmin) && (
+          <motion.div className="grid grid-cols-2 gap-3" variants={stagger} initial="hidden" animate="visible">
+            <motion.div custom={0} variants={fadeUp}
+              className={`col-span-2 rounded-2xl p-4 text-white shadow-md ${
+                turnoQ.data?.turno_abierto ? "bg-gradient-to-r from-indigo-600 to-violet-600" : "bg-gray-500"
+              }`}>
+              <div className="flex justify-between items-center">
+                <div>
+                  <p className="text-white/70 text-xs font-medium">Estado del Turno</p>
+                  <p className="text-2xl font-black mt-0.5">
+                    {turnoQ.isLoading ? "..." : turnoQ.data?.turno_abierto ? "Abierto" : "Cerrado"}
+                  </p>
+                  {turnoQ.data?.hora_inicio && (
+                    <p className="text-white/60 text-xs mt-0.5">
+                      Desde {new Date(turnoQ.data.hora_inicio).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
+                </div>
+                <FiUser className="text-white/40 text-3xl" />
+              </div>
+            </motion.div>
+            <motion.div custom={1} variants={fadeUp} className="bg-emerald-500 rounded-2xl p-4 text-white shadow-md">
+              <p className="text-white/70 text-xs font-medium">Ventas Turno</p>
+              <p className="text-2xl font-black mt-0.5">
+                {turnoQ.isLoading ? "..." : `$${Number(turnoQ.data?.total_ventas ?? 0).toFixed(2)}`}
+              </p>
+            </motion.div>
+            <motion.div custom={2} variants={fadeUp} className="bg-violet-500 rounded-2xl p-4 text-white shadow-md">
+              <p className="text-white/70 text-xs font-medium">Órdenes</p>
+              <p className="text-2xl font-black mt-0.5">
+                {turnoQ.isLoading ? "..." : (turnoQ.data?.total_ordenes ?? 0)}
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* ══ MESAS ACTIVAS ══ */}
+        {showMesas ? (
+          <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
+            className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+
+            <div className="flex justify-between items-center px-4 py-3 border-b border-gray-50">
+              <div>
+                <h2 className="text-sm font-bold text-gray-900">{isAdmin ? "Mesas Activas" : "Mis Mesas"}</h2>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  {activeTables.length === 0 ? "Sin mesas ocupadas" : `${activeTables.length} ocupada${activeTables.length !== 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <motion.button onClick={() => navigate("/orders")}
+                className="flex items-center gap-1 text-indigo-600 text-xs font-semibold bg-indigo-50 px-3 py-1.5 rounded-xl"
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                Ver todas <FaArrowRight size={10} />
               </motion.button>
             </div>
 
             {tablesLoading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                {[...Array(8)].map((_, i) => (
-                  <div key={i} className="p-5 rounded-2xl bg-gray-50/80 border border-gray-200 animate-pulse">
-                    <div className="w-16 h-16 rounded-xl bg-gray-200 mx-auto mb-4" />
-                    <div className="h-7 bg-gray-200 rounded w-3/4 mx-auto mb-3" />
-                    <div className="h-5 bg-gray-200 rounded w-1/2 mx-auto mb-2" />
-                    <div className="h-4 bg-gray-200 rounded w-2/3 mx-auto" />
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 gap-3 p-3">
+                {[...Array(4)].map((_, i) => <div key={i} className="h-24 rounded-xl bg-gray-100 animate-pulse" />)}
               </div>
             ) : tablesError ? (
-              <div className="text-center py-10 text-red-600 font-medium">
-                Error al cargar mesas. Intenta refrescar.
-              </div>
-            ) : OcupadoTables.length === 0 ? (
-              <div className="text-center py-12 text-gray-600">
-                <p className="text-xl font-medium">
-                  {isAdmin 
-                    ? "No hay mesas ocupadas en este momento" 
-                    : "No tienes mesas activas asignadas ahora mismo"}
-                </p>
-                <p className="mt-2 text-sm">Pronto aparecerán aquí cuando abras órdenes.</p>
+              <p className="text-center py-8 text-red-500 text-sm">
+                Error. <button onClick={refetchTables} className="underline">Reintentar</button>
+              </p>
+            ) : activeTables.length === 0 ? (
+              <div className="flex flex-col items-center py-10">
+                <GiCookingPot className="text-gray-300 text-4xl mb-2" />
+                <p className="text-gray-400 text-sm font-medium">No hay mesas activas</p>
+                <p className="text-gray-300 text-xs mt-0.5">Aparecerán al abrir órdenes</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-                {OcupadoTables.map((table) => {
-                  const total = table.total_with_tax || table.total || 0;
-                  const waiter = table.waiter_name || table.name || "Mesero no asignado";
-                  const minutes = table.minutes_occupied || 0;
+              <motion.div className="grid grid-cols-2 gap-3 p-3" variants={stagger} initial="hidden" animate="visible">
+                {activeTables.map((table, i) => {
+                  const total = Number(table.total_with_tax ?? table.total ?? 0);
+                  const hora  = orderTime(table);
 
                   return (
                     <motion.div
-                      key={table.id}
-                      onClick={() => openTableLikeOrdersCard(table)}
-                      className="group relative p-5 rounded-2xl bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 border border-orange-200 hover:border-orange-400 hover:shadow-xl cursor-pointer transition-all duration-300 overflow-hidden"
-                      whileHover={{ scale: 1.04, y: -6, transition: { duration: 0.2 } }}
-                      whileTap={{ scale: 0.98 }}
+                      key={table.id ?? table.table_no}
+                      custom={i} variants={fadeUp}
+                      onClick={() => openTable(table)}
+                      className="relative bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl p-3.5 cursor-pointer shadow-md overflow-hidden"
+                      whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.97 }}
                     >
-                      {/* Badge de número de mesa */}
-                      <div className="absolute -top-3 -right-3 w-12 h-12 rounded-full bg-gradient-to-br from-orange-600 to-amber-600 text-white font-bold text-xl flex items-center justify-center shadow-lg ring-2 ring-orange-300/50 group-hover:ring-orange-400 transition">
-                        {table.table_no}
+                      {/* badge número */}
+                      <div className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full bg-black/20 text-white font-extrabold text-xs flex items-center justify-center">
+                        {table.table_no ?? "?"}
                       </div>
 
-                      {/* Total grande */}
-                      <div className="text-center mt-2 mb-4">
-                        <p className="text-3xl font-extrabold text-orange-800 tracking-tight">
-                          ${Number(total).toFixed(2)}
-                        </p>
-                        <p className="text-xs text-orange-700 mt-1 font-medium">Total acumulado</p>
-                      </div>
-
-                      {/* Mesero */}
-                      <p className="text-center font-semibold text-gray-800 mb-1">
-                        {waiter}
+                      <p className="text-orange-100 text-[10px] font-semibold">Mesa {table.table_no ?? "?"}</p>
+                      <p className="text-white text-xl font-black leading-tight mt-0.5">
+                        {total > 0 ? `$${total.toFixed(2)}` : "—"}
                       </p>
 
-                      {/* Info secundaria */}
-                      <div className="flex justify-center items-center gap-3 text-xs text-gray-600 mt-2">
-                        <span>Mesa {table.table_no}</span>
-                        {minutes > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="font-medium">{minutes} min</span>
-                          </>
-                        )}
-                      </div>
+                      {isAdmin && table.waiter_name && (
+                        <p className="text-orange-100 text-[10px] mt-1 truncate">{table.waiter_name}</p>
+                      )}
 
-                      {/* Efecto hover sutil */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-orange-100/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                      {hora && (
+                        <div className="flex items-center gap-1 mt-1.5">
+                          <FiClock className="text-orange-200 text-[10px]" />
+                          <span className="text-orange-100 text-[10px] font-medium">{hora}</span>
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
             )}
           </motion.div>
         ) : (
-          <motion.div 
-            className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-indigo-500 text-indigo-800 p-5 rounded-xl shadow-md"
-            variants={itemVariants}
-          >
-            <p className="font-bold text-lg">Turno requerido</p>
-            <p className="mt-1">Inicia tu turno para ver las mesas activas y comenzar a tomar órdenes.</p>
+          <motion.div custom={1} variants={fadeUp} initial="hidden" animate="visible"
+            className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+            <p className="font-bold text-indigo-800 text-sm">Turno requerido</p>
+            <p className="text-indigo-600 text-xs mt-0.5">Inicia tu turno para ver mesas y tomar órdenes.</p>
           </motion.div>
         )}
       </main>

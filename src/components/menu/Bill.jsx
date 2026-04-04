@@ -1,21 +1,20 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { getTotalPrice, removeAllItems } from "../../redux/slices/cartSlice";
+import { getTotalPrice, removeAllItems, importItems } from "../../redux/slices/cartSlice";
 import { addOrder } from "../../https/index";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { removeCustomer } from "../../redux/slices/customerSlice";
 import Invoice from "../invoice/Invoice";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { setUser } from "../../redux/slices/userSlice";
-import { removeUser } from "../../redux/slices/userSlice";
 import { logout } from "../../https/index";
 import * as http from "../../https/index";
 
 const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const user = useSelector((state) => state.user);
   const customerData = useSelector((state) => state.customer);
@@ -25,8 +24,6 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
   const [paymentMethod, setPaymentMethod] = useState("");
   const [showInvoice, setShowInvoice] = useState(false);
   const [orderInfo, setOrderInfo] = useState(null);
-
-  // Estado para bloquear el botón mientras se procesa
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const API_URL = import.meta.env.VITE_BACKEND_URL;
@@ -40,14 +37,22 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
     } catch (e) {
       if (e?.response?.status !== 404) throw e;
     }
-    const r2 = await httpClient.get(`${API_URL}/api/order/${id}`);
-    return r2?.data?.data ?? r2?.data;
+    try {
+      const r2 = await httpClient.get(`${API_URL}/api/order/${id}`);
+      return r2?.data?.data ?? r2?.data;
+    } catch (e) {
+      throw e;
+    }
   };
 
   const normalizeItemsFromOrder = (order) => {
     let items = order?.items || [];
     if (typeof items === "string") {
-      try { items = JSON.parse(items); } catch { items = []; }
+      try {
+        items = JSON.parse(items);
+      } catch {
+        items = [];
+      }
     }
     return (Array.isArray(items) ? items : []).map((it) => ({
       id: it.item_id ?? it.id ?? it._id ?? `${it.name}-${Number(it.price ?? it.total ?? 0)}`,
@@ -63,9 +68,9 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
     try {
       return await httpClient.put(`${API_URL}/api/orders/${orderId}`, { op: "appendItems", items });
     } catch (e) {
-      if (!(e?.response && e.response.status === 404)) throw e;
+      if (e?.response?.status !== 404) throw e;
     }
-    return httpClient.put(`${API_URL}/api/order/${orderId}`, { op: "appendItems", items });
+    return await httpClient.put(`${API_URL}/api/order/${orderId}`, { op: "appendItems", items });
   };
 
   const createOrderMutation = useMutation({
@@ -83,10 +88,7 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
         paymentMethod: paymentMethod || "Pending",
         total,
         items: cartData,
-        tableId:
-          customerData?.table?.tableId ??
-          customerData?.table?.id ??
-          null,
+        tableId: customerData?.table?.tableId ?? customerData?.table?.id ?? null,
       };
 
       setOrderInfo(normalized);
@@ -97,11 +99,13 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
 
       logout();
       navigate("/profiles", { replace: true });
-      setTimeout(() => window.location.reload(), 100);
+      // Mantenemos el reload aquí porque parece ser intencional para logout completo
+      setTimeout(() => window.location.reload(), 150);
     },
     onError: (error) => {
-      console.error(error);
+      console.error("Error al crear orden:", error);
       enqueueSnackbar("No se pudo registrar la orden", { variant: "error" });
+      setIsSubmitting(false);
     },
   });
 
@@ -110,31 +114,40 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
     onSuccess: async () => {
       enqueueSnackbar("¡Artículos agregados a la orden!", { variant: "success" });
 
+      // Refrescamos la orden (opcional pero útil para consistencia)
       try {
         const fullOrder = await fetchOrderById(orderId);
         const normalized = normalizeItemsFromOrder(fullOrder);
         dispatch(removeAllItems());
-        dispatch(importItems(normalized));
+        // dispatch(importItems(normalized));   // descomenta si quieres recargar el carrito inmediatamente
       } catch (e) {
-        console.error("No se pudo rehidratar la orden después de agregar:", e);
+        console.warn("No se pudo refrescar la orden después de append:", e);
       }
 
-      navigate("/orders", { replace: true });
-      window.location.reload();
+      // Navegación inteligente usando returnTo
+      const returnTo = location.state?.returnTo || "/orders";
+      navigate(returnTo, { replace: true });
+
+      setIsSubmitting(false);
     },
     onError: (error) => {
-      console.error(error);
+      console.error("Error al agregar items:", error);
       enqueueSnackbar(
         error?.response?.data?.message ||
-          error?.message ||
-          "No se pudieron agregar los artículos a la orden",
+        error?.message ||
+        "No se pudieron agregar los artículos a la orden",
         { variant: "error" }
       );
+      setIsSubmitting(false);
     },
   });
 
   const handlePlaceOrder = async () => {
-    if (isSubmitting) return; // Evita múltiples clics
+    if (isSubmitting) return;
+    if (cartData.length === 0) {
+      enqueueSnackbar("El carrito está vacío", { variant: "warning" });
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -146,6 +159,7 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
           setIsSubmitting(false);
           return;
         }
+
         const itemsPayload = newItems.map((it) => ({
           id: it.id,
           name: it.name,
@@ -158,9 +172,9 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
         return;
       }
 
+      // Flujo de creación de orden nueva
       const raw = customerData?.table;
-      const tableIdFromStore =
-        typeof raw === "object" ? (raw?.tableId ?? raw?.id) : raw;
+      const tableIdFromStore = typeof raw === "object" ? (raw?.tableId ?? raw?.id) : raw;
 
       const tableId = parseInt(
         (lockTableSelection && lockedTable != null) ? lockedTable : tableIdFromStore,
@@ -168,7 +182,7 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
       );
 
       if (!tableId || Number.isNaN(tableId)) {
-        enqueueSnackbar("No se ha seleccionado una mesa.", { variant: "error" });
+        enqueueSnackbar("No se ha seleccionado una mesa válida.", { variant: "error" });
         setIsSubmitting(false);
         return;
       }
@@ -178,7 +192,6 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
         name: user?.name ?? user?.full_name ?? "Usuario",
         created_by_id: user?.id ?? user?._id ?? null,
         created_by_name: user?.name ?? user?.full_name ?? "Usuario",
-
         createdBy: {
           id: user?.id ?? user?._id ?? null,
           name: user?.name ?? user?.full_name ?? user?.username ?? "Usuario",
@@ -202,7 +215,7 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
 
       createOrderMutation.mutate(orderData);
     } catch (err) {
-      console.error("Error inesperado:", err);
+      console.error("Error inesperado al procesar la orden:", err);
       enqueueSnackbar("Error inesperado al procesar la orden", { variant: "error" });
       setIsSubmitting(false);
     }
@@ -236,7 +249,7 @@ const Bill = ({ mode, orderId, lockedTable = null, lockTableSelection = false })
           {isSubmitting ? (
             <>
               <div className="animate-spin rounded-full h-7 w-7 border-4 border-white border-t-transparent"></div>
-              Procesando orden...
+              Procesando...
             </>
           ) : (
             <>{isAppending ? "Agregar a la orden" : "Tomar Orden"}</>
