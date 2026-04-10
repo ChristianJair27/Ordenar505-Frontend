@@ -45,7 +45,6 @@ export const axiosWrapper = axios.create({
   baseURL: API_URL,
   withCredentials: false,
   headers: {
-    "Content-Type": "application/json",
     Accept: "application/json",
   },
   timeout: 20000,
@@ -56,6 +55,16 @@ axiosWrapper.interceptors.request.use(
   (config) => {
     const t = getActiveAccessToken();
     if (t) config.headers.Authorization = `Bearer ${t}`;
+
+    // Si es FormData, eliminar Content-Type para que axios lo calcule
+    // automáticamente con el boundary correcto (multipart/form-data; boundary=...)
+    // Si NO es FormData, poner application/json
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+    } else if (!config.headers["Content-Type"]) {
+      config.headers["Content-Type"] = "application/json";
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

@@ -1,14 +1,13 @@
 import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { IoMdClose } from "react-icons/io";
 import { axiosWrapper } from "../../https/axiosWrapper";
+import { enqueueSnackbar } from "notistack";
 
 const AddTableModal = ({ setIsOpen, onTableAdded, onUserAdded }) => {
-  const [formData, setFormData] = useState({
-    table_no: "",
-    seats: "",
-  });
+  const [formData, setFormData] = useState({ table_no: "", seats: "" });
   const [isSaving, setIsSaving] = useState(false);
 
-  // compat: si el padre envió onUserAdded, úsalo; si no, onTableAdded; si no, no-op
   const afterSave =
     typeof onTableAdded === "function"
       ? onTableAdded
@@ -18,11 +17,7 @@ const AddTableModal = ({ setIsOpen, onTableAdded, onUserAdded }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // solo dígitos para campos numéricos
-    const clean = ["table_no", "seats"].includes(name)
-      ? value.replace(/[^\d]/g, "")
-      : value;
-
+    const clean = value.replace(/[^\d]/g, "");
     setFormData((prev) => ({ ...prev, [name]: clean }));
   };
 
@@ -30,11 +25,11 @@ const AddTableModal = ({ setIsOpen, onTableAdded, onUserAdded }) => {
     e.preventDefault();
     if (isSaving) return;
 
-    // Validación mínima
     const table_no = Number(formData.table_no);
     const seats = Number(formData.seats);
+
     if (!table_no || !seats) {
-      alert("Por favor completa todos los campos con valores numéricos.");
+      enqueueSnackbar("Completa todos los campos con valores numéricos", { variant: "warning" });
       return;
     }
 
@@ -45,78 +40,119 @@ const AddTableModal = ({ setIsOpen, onTableAdded, onUserAdded }) => {
         { table_no, seats },
         { withCredentials: true }
       );
-
-      // refresca lista si hay callback
+      enqueueSnackbar(`Mesa ${table_no} agregada correctamente`, { variant: "success" });
       afterSave();
       setIsOpen(false);
     } catch (err) {
-      const status = err?.response?.status;
       const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Error al agregar mesa.";
-
-      // Mensaje amigable para duplicados
-      if (status === 400 || status === 409) {
-        alert(msg); // p.ej. "Table already exists"
-      } else {
-        alert(`Error al agregar mesa: ${msg}`);
-      }
-      console.error("❌ Error al agregar mesa:", err);
+        err?.response?.data?.message || err?.message || "Error al agregar mesa";
+      enqueueSnackbar(msg, { variant: "error" });
     } finally {
       setIsSaving(false);
     }
   };
 
+  const inputClass =
+    "w-full px-4 py-2.5 bg-[#1f1f1f] border border-white/8 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 transition-all text-sm text-center text-lg font-semibold tracking-widest";
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white p-6 rounded w-full max-w-md">
-        <h2 className="text-xl font-bold mb-4 text-black">Agregar Mesa</h2>
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.93, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.93, y: 20 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="bg-[#262626] rounded-2xl shadow-2xl w-full max-w-sm border border-white/5 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <h2 className="text-lg font-semibold text-white tracking-tight">Nueva Mesa</h2>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+          >
+            <IoMdClose size={20} />
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <input
-            type="text"
-            name="table_no"
-            placeholder="Número de Mesa"
-            value={formData.table_no}
-            onChange={handleChange}
-            required
-            className="w-full p-2 border rounded text-black"
-            inputMode="numeric"
-            pattern="\d*"
-          />
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Número de mesa */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider text-center">
+              Número de Mesa
+            </label>
+            <input
+              type="text"
+              name="table_no"
+              placeholder="1"
+              value={formData.table_no}
+              onChange={handleChange}
+              required
+              inputMode="numeric"
+              pattern="\d*"
+              className={inputClass}
+            />
+          </div>
 
-          <input
-            type="text"
-            name="seats"
-            placeholder="Asientos"
-            value={formData.seats} 
-            onChange={handleChange}
-            required
-            className="w-full p-2 border rounded text-black"
-            inputMode="numeric"
-            pattern="\d*"
-          />
+          {/* Asientos */}
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider text-center">
+              Número de Asientos
+            </label>
+            <input
+              type="text"
+              name="seats"
+              placeholder="4"
+              value={formData.seats}
+              onChange={handleChange}
+              required
+              inputMode="numeric"
+              pattern="\d*"
+              className={inputClass}
+            />
+          </div>
 
-          <div className="flex justify-end gap-2">
+          {/* Preview */}
+          {(formData.table_no || formData.seats) && (
+            <div className="flex items-center justify-center gap-4 p-3 bg-[#1f1f1f] rounded-xl border border-white/5">
+              {formData.table_no && (
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-white">{formData.table_no}</p>
+                  <p className="text-xs text-gray-500">Mesa</p>
+                </div>
+              )}
+              {formData.table_no && formData.seats && (
+                <div className="w-px h-8 bg-white/10" />
+              )}
+              {formData.seats && (
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-white">{formData.seats}</p>
+                  <p className="text-xs text-gray-500">Asientos</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Botones */}
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="px-4 py-2 bg-gray-500 text-white rounded"
               disabled={isSaving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-white/5 hover:bg-white/10 transition-all disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-60"
               disabled={isSaving}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 active:bg-green-700 text-white shadow-lg shadow-green-900/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? "Guardando..." : "Guardar"}
+              {isSaving ? "Guardando..." : "Agregar Mesa"}
             </button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </div>
   );
 };

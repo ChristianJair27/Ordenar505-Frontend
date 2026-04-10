@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { IoMdClose } from "react-icons/io";
 import { axiosWrapper } from "../../https/axiosWrapper";
-import { enqueueSnackbar } from "notistack"; // si usas notistack en el resto del proyecto
+import { enqueueSnackbar } from "notistack";
+
+const ROLES = [
+  { value: "waiter", label: "Mesero" },
+  { value: "admin", label: "Administrador" },
+  { value: "cajero", label: "Cajero" },
+];
 
 const AddUserModal = ({ setIsOpen, onUserAdded, initialData = null }) => {
   const isEditing = !!initialData?.id;
@@ -12,17 +20,15 @@ const AddUserModal = ({ setIsOpen, onUserAdded, initialData = null }) => {
     password: "",
     role: "waiter",
   });
-
   const [loading, setLoading] = useState(false);
 
-  // Cargar datos iniciales cuando se edita
   useEffect(() => {
     if (initialData) {
       setFormData({
         name: initialData.name || "",
         phone: initialData.phone || "",
         email: initialData.email || "",
-        password: "", // ← nunca precargamos la contraseña real
+        password: "",
         role: initialData.role || "waiter",
       });
     }
@@ -30,109 +36,118 @@ const AddUserModal = ({ setIsOpen, onUserAdded, initialData = null }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.name || !formData.email || !formData.role) {
+      enqueueSnackbar("Faltan campos obligatorios", { variant: "warning" });
+      return;
+    }
+    if (!isEditing && !formData.password) {
+      enqueueSnackbar("La contraseña es obligatoria al crear usuario", { variant: "warning" });
+      return;
+    }
+
     setLoading(true);
-
     try {
-      // Validaciones básicas
-      if (!formData.name || !formData.email || !formData.role) {
-        enqueueSnackbar?.("Faltan campos obligatorios", { variant: "warning" }) ||
-          alert("Faltan campos obligatorios");
-        return;
-      }
-
-      // Si es creación → password obligatorio
-      if (!isEditing && !formData.password) {
-        enqueueSnackbar?.("La contraseña es obligatoria al crear usuario", { variant: "warning" }) ||
-          alert("La contraseña es obligatoria");
-        return;
-      }
-
       const url = import.meta.env.VITE_BACKEND_URL;
       const config = { withCredentials: true };
 
       if (isEditing) {
-        // Editar → no enviamos password si está vacío
         const dataToSend = { ...formData };
         if (!dataToSend.password) delete dataToSend.password;
-
         await axiosWrapper.put(`${url}/api/user/${initialData.id}`, dataToSend, config);
-        enqueueSnackbar?.("Usuario actualizado correctamente", { variant: "success" });
+        enqueueSnackbar("Usuario actualizado correctamente", { variant: "success" });
       } else {
-        // Crear
         await axiosWrapper.post(`${url}/api/user/register`, formData, config);
-        enqueueSnackbar?.("Usuario creado correctamente", { variant: "success" });
+        enqueueSnackbar("Usuario creado correctamente", { variant: "success" });
       }
 
-      onUserAdded(); // refrescar lista
+      onUserAdded?.();
       setIsOpen(false);
     } catch (err) {
-      console.error("Error al guardar usuario:", err);
       const msg =
         err.response?.data?.message ||
         (isEditing ? "No se pudo actualizar el usuario" : "No se pudo crear el usuario");
-      enqueueSnackbar?.(msg, { variant: "error" }) || alert(msg);
+      enqueueSnackbar(msg, { variant: "error" });
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClass =
+    "w-full px-4 py-2.5 bg-[#1f1f1f] border border-white/8 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-green-500/50 focus:ring-1 focus:ring-green-500/20 transition-all text-sm";
+  const labelClass = "block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider";
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.93, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.93, y: 20 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="bg-[#262626] rounded-2xl shadow-2xl w-full max-w-md border border-white/5 overflow-hidden"
+      >
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-indigo-50 to-blue-50 border-b">
-          <h2 className="text-xl font-bold text-gray-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <h2 className="text-lg font-semibold text-white tracking-tight">
             {isEditing ? "Editar Usuario" : "Nuevo Usuario"}
           </h2>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1.5 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+          >
+            <IoMdClose size={20} />
+          </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Nombre */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+            <label className={labelClass}>Nombre *</label>
             <input
               type="text"
               name="name"
               value={formData.name}
               onChange={handleChange}
+              placeholder="Nombre completo"
               required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              className={inputClass}
             />
           </div>
 
+          {/* Teléfono */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+            <label className={labelClass}>Teléfono</label>
             <input
               type="text"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              placeholder="Opcional"
+              className={inputClass}
             />
           </div>
 
+          {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico *</label>
+            <label className={labelClass}>Correo electrónico *</label>
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
+              placeholder="correo@ejemplo.com"
               required
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              className={inputClass}
             />
           </div>
 
+          {/* Contraseña */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className={labelClass}>
               {isEditing ? "Nueva contraseña (opcional)" : "Contraseña *"}
             </label>
             <input
@@ -141,56 +156,51 @@ const AddUserModal = ({ setIsOpen, onUserAdded, initialData = null }) => {
               value={formData.password}
               onChange={handleChange}
               required={!isEditing}
-              placeholder={isEditing ? "Dejar en blanco para no cambiar" : ""}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+              placeholder={isEditing ? "Dejar vacío para no cambiar" : "Mínimo 6 caracteres"}
+              className={inputClass}
             />
           </div>
 
+          {/* Rol */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
+            <label className={labelClass}>Rol *</label>
             <select
               name="role"
               value={formData.role}
               onChange={handleChange}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white transition"
+              className={`${inputClass} cursor-pointer appearance-none`}
             >
-              <option value="waiter">Mesero</option>
-              <option value="admin">Administrador</option>
-              <option value="cajero">Cajero</option>
-              {/* puedes agregar más roles si los tienes */}
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
             </select>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 mt-2">
+          {/* Botones */}
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={() => setIsOpen(false)}
               disabled={loading}
-              className="px-5 py-2.5 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-400 bg-white/5 hover:bg-white/10 transition-all disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className={`px-6 py-2.5 text-white font-medium rounded-lg transition flex items-center gap-2
-                ${loading ? "bg-indigo-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"}`}
+              className="flex-1 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white shadow-lg shadow-green-900/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading && (
                 <svg
-                  className="animate-spin h-5 w-5 text-white"
+                  className="animate-spin h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
                 >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path
                     className="opacity-75"
                     fill="currentColor"
@@ -198,11 +208,11 @@ const AddUserModal = ({ setIsOpen, onUserAdded, initialData = null }) => {
                   />
                 </svg>
               )}
-              {isEditing ? "Guardar cambios" : "Crear usuario"}
+              {isEditing ? "Guardar cambios" : "Crear Usuario"}
             </button>
           </div>
         </form>
-      </div>
+      </motion.div>
     </div>
   );
 };

@@ -610,8 +610,8 @@ const Metrics = () => {
                       {dishes.map((dish) => (
                         <tr key={dish.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-5 py-3">
-                            {dish.image_url ? (
-                              <img src={`${API_URL}${dish.image_url}`} alt={dish.name}
+                            {dish.image_path ? (
+                              <img src={`${API_URL}${dish.image_path}`} alt={dish.name}
                                 className="w-12 h-12 object-cover rounded-xl border border-gray-200"
                                 onError={(e) => { e.target.style.display = "none"; }} />
                             ) : (
