@@ -10,6 +10,9 @@ import { enqueueSnackbar } from "notistack";
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
+import QRCode from "qrcode";
+
+const FACTURACION_URL = "https://lapeñadesantiago.com/facturacion";
 
 const OrderCard = ({
   order,
@@ -75,37 +78,71 @@ const OrderCard = ({
   const isCanceled = status.includes("cancel");
 
   /* ── Impresión rápida ── */
-  const handleQuickPrint = () => {
+  const handleQuickPrint = async () => {
     let safeItems = order?.items || [];
     if (typeof safeItems === "string") { try { safeItems = JSON.parse(safeItems); } catch { safeItems = []; } }
-    const dateStr = new Date(order?.order_date || Date.now()).toLocaleString();
+    const dateStr = new Date(order?.order_date || Date.now()).toLocaleString("es-MX");
+    const ordId = order?.id ?? "N/A";
+    const folioUrl = `${FACTURACION_URL}?folio=${ordId}`;
+
+    let qrImg = "";
+    try {
+      const dataUrl = await QRCode.toDataURL(folioUrl, { width: 140, margin: 1, errorCorrectionLevel: "M" });
+      qrImg = `<img src="${dataUrl}" width="110" height="110" style="display:block;margin:2mm auto 1mm"/>`;
+    } catch {}
+
     const html = `<!doctype html><html><head><meta charset="utf-8"/>
 <title>Ticket</title>
 <style>
-@page{size:58mm auto;margin:0}
-body{margin:0;padding:0;width:58mm;font-size:11px}
-.r{width:58mm;box-sizing:border-box;padding:3mm 3mm 6mm}
-h2,h3{text-align:center;margin:2mm 0 1mm;font-size:12px}
-p{margin:0.5mm 0}.muted{color:#444;text-align:center}
-.line{border-top:1px dashed #000;margin:2mm 0}
-.row{display:flex;justify-content:space-between}
+@page{size:58mm auto;margin:0 2mm}
+html,body{margin:0;padding:0;width:54mm;font-family:'Courier New',Courier,monospace;font-size:14px;line-height:1.5}
+.r{width:54mm;box-sizing:border-box;padding:2mm 0 8mm}
+h2{text-align:center;margin:1mm 0;font-size:17px;font-weight:900;letter-spacing:0.5px}
+h3{text-align:center;margin:1.5mm 0 1mm;font-size:14px;font-weight:700}
+p{margin:1mm 0;font-size:13px}
+.center{text-align:center}
+.muted{color:#222;text-align:center;font-size:13px}
+.line{border-top:1px dashed #000;margin:2.5mm 0}
+.solid{border-top:2px solid #000;margin:2.5mm 0}
+.row{display:flex;justify-content:space-between;font-size:16px;font-weight:900}
 .items{list-style:none;padding:0;margin:0}
-.item{display:flex;justify-content:space-between;margin:0.5mm 0}
+.item{display:flex;justify-content:space-between;margin:1.2mm 0;font-size:13px}
+.item-name{flex:1;padding-right:2mm;word-break:break-word}
+.item-price{white-space:nowrap;font-weight:700}
+.folio-box{border:2px solid #000;padding:2mm;margin:2mm 0;text-align:center}
+.folio-label{font-size:12px;margin-bottom:0.5mm}
+.folio-num{font-size:20px;font-weight:900;letter-spacing:3px}
+.fac-title{font-size:13px;font-weight:700;text-align:center;margin-bottom:1mm}
+.fac-url{font-size:11px;text-align:center;word-break:break-all}
+.fac-note{font-size:11px;text-align:center;margin-top:1.5mm;line-height:1.4}
+*{page-break-inside:avoid}
 </style></head><body><div class="r">
-<h2>La Peña de Santiago</h2><p class="muted">¡Gracias por su visita!</p>
-<div class="line"></div>
-<p><b>Orden:</b> #${order?.id??'N/A'}</p>
+<h2>La Peña de Santiago</h2>
+<p class="muted">-- ¡Gracias por su visita! --</p>
+<div class="solid"></div>
+<p><b>Orden:</b> #${ordId}</p>
 <p><b>Nombre:</b> ${order?.name||order?.customer_name||'N/A'}</p>
 <p><b>Mesa:</b> ${tableNo}</p>
 <p><b>Fecha:</b> ${dateStr}</p>
 <div class="line"></div>
-<ul class="items">${safeItems.map(it=>`<li class="item"><span>${it.item_name||it.name||'Artículo'}${it.quantity?` x${it.quantity}`:''}</span><span>$${Number(it.price??it.total??0).toFixed(2)}</span></li>`).join('')}</ul>
+<h3>-- Platillos --</h3>
+<ul class="items">${safeItems.map(it=>`<li class="item"><span class="item-name">${it.item_name||it.name||'Artículo'}${it.quantity?` x${it.quantity}`:''}</span><span class="item-price">$${Number(it.price??it.total??0).toFixed(2)}</span></li>`).join('')}</ul>
 <div class="line"></div>
-<div class="row"><b>Total:</b><b>$${Number(order?.total??order?.total_with_tax??0).toFixed(2)}</b></div>
+<p class="center muted">* Precios incluyen todos los cargos</p>
+<div class="row"><span>TOTAL:</span><span>$${Number(order?.total??order?.total_with_tax??0).toFixed(2)}</span></div>
 <div class="line"></div>
-<p class="muted">Método: ${order?.payment_method||'Pendiente'}</p>
-</div><script>setTimeout(()=>{window.print();window.close();},50);</script></body></html>`;
-    const w = window.open("", "_blank", "width=400,height=800");
+<p class="center" style="font-size:11px"><b>Método:</b> ${order?.payment_method||'Pendiente'}</p>
+<div class="solid"></div>
+<p class="fac-title">¿Necesitas factura? Escanea el QR o visita:</p>
+<p class="fac-url">${FACTURACION_URL}</p>
+${qrImg}
+<div class="folio-box"><p class="folio-label">Tu número de folio es:</p><p class="folio-num">${ordId}</p></div>
+<p class="fac-note">Tienes <b>24 horas</b> después de tu consumo<br/>para solicitar tu factura.</p>
+<div class="line"></div>
+<p class="center muted"><b>¡Vuelva pronto!</b></p>
+</div><script>setTimeout(function(){window.print();window.close();},100);</script></body></html>`;
+
+    const w = window.open("", "_blank", "width=400,height=900");
     if (!w) return;
     w.document.open(); w.document.write(html); w.document.close();
   };
